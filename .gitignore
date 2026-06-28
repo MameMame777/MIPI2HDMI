@@ -1,0 +1,199 @@
+# ============================================================
+# Vivado / Xilinx
+# ============================================================
+# STRATEGY (2026-06-20): track DESIGN SOURCES, ignore BUILD OUTPUTS.
+#   - The deployed BD project lives in vloop_probes2/ (a build dir, ignored below).
+#     Its DESIGN (BD: C_DOUT_DEFAULT, core0 CONFIG, VDMA fsync=2, connections) is
+#     version-controlled as REGENERATION TCLs in vivado/ (NOT ignored):
+#       vivado/vloop_probes2_bd.tcl        (write_bd_tcl -- the block design)
+#       vivado/vloop_probes2_recreate.tcl  (write_project_tcl -- the project)
+#     Regenerate with: vivado -mode batch -source vivado/vloop_probes2_recreate.tcl
+#     Re-export after BD edits with vivado/export_vloop_probes2_tcl.tcl. See REPRODUCE.md.
+#   - RTL (rtl/), build/constraint TCLs (vivado/*.tcl), scripts/ are tracked.
+#   - Everything below (runs/cache/gen/bit/dcp/logs) is regenerable -> ignored.
+
+# Project build artifacts (any depth under vivado/)
+vivado/**/*.runs/
+vivado/**/*.cache/
+vivado/**/*.hw/
+vivado/**/*.ip_user_files/
+vivado/**/*.sim/
+vivado/**/*.gen/
+vivado/**/*.srcs/
+vivado/**/*.xpr.bak
+vivado/**/vivado_proj/
+vivado/.Xil/
+.Xil/
+vcap*/
+vloop*/
+
+# Bitstream and implementation outputs
+*.bit
+*.bin
+*.mcs
+*.ltx
+*.rpt
+*.dcp
+
+# Vivado log / journal
+vivado_*.log
+vivado_*.jou
+*.log
+*.jou
+hs_err_pid*.dmp
+
+# IP cores (generated, not source)
+vivado/**/.gitignore
+vivado/**/hdl/
+vivado/**/simulation/
+
+# ============================================================
+# Simulation (DSim / ModelSim / VCS)
+# ============================================================
+*.vcd
+*.fsdb
+*.wlf
+*.ucdb
+
+# DSim work directories
+work/
+dsim_work/
+sim/exec/
+**/dsim.env
+**/metrics.db
+*.dsim.log
+
+# Compilation / elaboration artifacts
+*.o
+*.so
+*.a
+*.d
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# ============================================================
+# Skill eval runs (runtime outputs, not source)
+# ============================================================
+skills/**/evals/runs/
+skills/**/__pycache__/
+
+# ============================================================
+# Project-local config (not for sharing)
+# ============================================================
+CLAUDE.md
+skills/
+docs/plan/
+docs/progress/
+instructions/
+
+# ============================================================
+# OS / Editor
+# ============================================================
+Thumbs.db
+desktop.ini
+.DS_Store
+
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# ============================================================
+# Temporary / scratch
+# ============================================================
+*.tmp
+*.bak
+*.orig
+*.pdf
+docs/*.pdf
+
+# ============================================================
+# Hardware capture / runtime output
+# ============================================================
+**/owltap_capture*.json
+**/jtag_capture*.json
+**/captures*.json
+**/pcam_boundary*.json
+
+# DDR dumps and converted images (entire captures tree)
+captures/
+
+# ============================================================
+# Session debug logs and stray Vivado project copies
+# ============================================================
+build_log_*.txt
+build_log_*.jou
+NA/
+mipi2hdml_lane1_*/
+
+# Captured numpy data from notebooks/scripts (regenerable)
+*.npz
+
+# Hardware capture output directory
+_capture/
+
+# One-shot picture output (runtime captures; force-add a keeper if needed)
+picture/
+
+# DSim / simulation build artifacts
+.srcs/
+work_tpg_full/
+work/
+
+# Vivado build console logs (generated, large)
+vloop_tpg_v*.console
+vloop_tpg_v*.console.err
+
+
+# Python test cache (never commit)
+.pytest_cache/
+__pycache__/
+
+# Third-party copyrighted vendor docs (kept only in local Obsidian vault, NOT redistributed)
+/OV5640.h
+docs/OV5640_datasheet.md
+docs/pg232-mipi-csi2-rx.md
+
+# DSim run outputs (logs/waves), regenerable
+_dsim/
+
+# OV5640 reference / analysis materials (datasheet, Linux-mainline notes, register dumps,
+# SCCB tables) — kept local only, not redistributed. (Code stays tracked: rtl ov5640_sccb_init_probe.sv,
+# routeA/src_cam/ov5640_init.h, the tb.) 2026-06-27.
+docs/OV5640*
+docs/ov5640_*
+docs/doc/ov5640_*
+docs/doc/OV5640*
+
+# ============================================================
+# Doc reorg (2026-06-27): the tracked design docs are reduced to the
+# canonical bilingual set only —
+#   docs/doc/rtl_design_spec.md / rtl_design_spec_ja.md          (RTL design spec, EN/JA)
+#   docs/doc/image_processing_principles.md / *_ja.md            (image processing, EN/JA)
+#   README.md / README_ja.md                                     (entry point, EN/JA)
+# Everything else below is kept LOCAL ONLY (untracked, not redistributed).
+# Explicit paths so the canonical specs above are never caught by a glob.
+docs/skills-index.md
+docs/doc/fpga_config_knob_reference.md
+docs/doc/image_processing_slot_spec_20260625.md
+docs/doc/python_spec_20260619.md
+docs/doc/repository_structure.md
+docs/doc/rtl_design_detail_20260620.md
+docs/doc/rtl_spec_20260619.md
+docs/doc/xilinx_mipi_csi2_rx_subsystem_reference.md
+routeA/README.md
+scripts/README.md

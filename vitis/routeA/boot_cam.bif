@@ -1,0 +1,7 @@
+//arch = zynq; split = false; format = BIN
+the_ROM_image:
+{
+	[bootloader] gen2/fsbl/executable.elf
+	vloop_probes2.bit
+	src_cam/mipi_cam.elf
+}

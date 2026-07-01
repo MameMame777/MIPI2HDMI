@@ -27,13 +27,18 @@ def _assert_mingw_python() -> None:
     except cs.ToolchainError as exc:
         raise RuntimeError(str(exc)) from exc
     exe = Path(sys.executable).resolve()
+    base = Path(sys.base_prefix).resolve()      # a venv's base install; == ucrt64 dir for us
     ucrt = (root / "ucrt64").resolve()
-    if ucrt not in exe.parents:
+    # Accept the raw ucrt64 python (exe under ucrt64) OR a venv whose BASE is that ucrt64
+    # python (same libpython -> same VPI ABI). Reject an MSVC/other-base python/venv.
+    ok = (ucrt in exe.parents) or (base == ucrt) or (ucrt in base.parents)
+    if not ok:
         raise RuntimeError(
-            "cocotb tests must run under the MSYS2 ucrt64 (MinGW) Python for VPI ABI "
-            f"compatibility.\n  running: {exe}\n  expected under: {ucrt}\n"
-            "Use scripts/run_cocotb.ps1 or verification/cocotb/runner.py, which select the "
-            "ucrt64 python automatically."
+            "cocotb tests must run under the MSYS2 ucrt64 (MinGW) Python (or a venv based on "
+            "it) for VPI ABI compatibility.\n"
+            f"  running:     {exe}\n  base_prefix: {base}\n  expected ucrt64: {ucrt}\n"
+            "Use scripts/run_cocotb.ps1 / pytest_cocotb.ps1, which select the project venv "
+            "(verification/cocotb/.venv) or the ucrt64 python automatically."
         )
 
 

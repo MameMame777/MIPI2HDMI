@@ -26,3 +26,13 @@ function Get-Ucrt64Python {
     param([string]$Root = (Resolve-Msys2Root))
     return (Join-Path $Root 'ucrt64\bin\python.exe')
 }
+
+# The python the cocotb runner/tests use: the project's ucrt64-based venv if present
+# (isolated deps), else the raw ucrt64 python. The venv is created from the ucrt64 python so
+# it shares the same libpython -> same VPI ABI (conftest accepts it via sys.base_prefix).
+function Get-CocotbPython {
+    param([Parameter(Mandatory = $true)][string]$Workspace, [string]$Root = (Resolve-Msys2Root))
+    $venvPy = Join-Path $Workspace 'verification\cocotb\.venv\bin\python.exe'
+    if (Test-Path $venvPy) { return $venvPy }
+    return (Join-Path $Root 'ucrt64\bin\python.exe')
+}

@@ -25,10 +25,13 @@ Prerequisite: MSYS2 must be installed (<https://www.msys2.org>). Then:
 .\verification\cocotb\toolchain\install_toolchain.ps1
 ```
 
-This runs `pacman` for the ucrt64 packages, `pip install -r requirements.lock` into the
-**ucrt64** python, and builds the static VPI lib. It resolves the MSYS2 root from
-`$MSYS2_ROOT` → a `verilator` on PATH → well-known dirs; set `$env:MSYS2_ROOT` if your
-install is elsewhere (no absolute paths are committed).
+This runs `pacman` for the ucrt64 packages, **creates a venv** at
+`verification/cocotb/.venv` **from the ucrt64 python** and `pip install -r requirements.lock`
+into it (isolated cocotb / pyuvm / pytest), then builds the static VPI lib into the venv's
+cocotb. The venv shares the ucrt64 base interpreter (same `libpython` → same VPI ABI), so
+`conftest.py` accepts it via `sys.base_prefix`. It resolves the MSYS2 root from `$MSYS2_ROOT`
+→ a `verilator` on PATH → well-known dirs; set `$env:MSYS2_ROOT` if your install is elsewhere
+(no absolute paths are committed). The `.venv` is gitignored (regenerate with this script).
 
 ## Run tests
 
@@ -39,8 +42,9 @@ install is elsewhere (no absolute paths are committed).
 .\scripts\run_cocotb.ps1 -List                   # list blocks
 ```
 
-Or directly with the ucrt64 python: `python -m pytest verification/cocotb/<block>`.
-Reports land in the gitignored `verification/cocotb/_exec/regression_cocotb_<ts>.md`.
+The scripts auto-select the project venv (`verification/cocotb/.venv`) if present, else the
+raw ucrt64 python (`Get-CocotbPython` in `resolve_msys2.ps1`). Reports land in the gitignored
+`verification/cocotb/_exec/regression_cocotb_<ts>.md`.
 
 ## The 8 Windows workarounds (and where each lives)
 
@@ -84,6 +88,8 @@ hatch if a Verilator/cocotb upgrade ever breaks the VPI build.
   sim runs via `runner_support` (which sets `COCOTB_DLL_DIRS`) and `sitecustomize.py` is on
   PYTHONPATH.
 - **`verilator executable not found`** → `$env:MSYS2_ROOT` unset and no verilator on PATH.
-- **VPI ABI / crash on import** → you're running an MSVC/venv python; use the ucrt64 python
-  (`conftest.py` asserts this).
-- **`cannot find -lcocotbvpi_verilator`** → the VPI lib isn't built; run `bootstrap_vpi.py`.
+- **VPI ABI / crash on import** → you're running an **MSVC-based** python/venv; use the project
+  venv (`verification/cocotb/.venv`) or the ucrt64 python. `conftest.py` accepts either (checks
+  `sys.base_prefix` is the ucrt64 install) and rejects an MSVC base.
+- **`cannot find -lcocotbvpi_verilator`** → the VPI lib isn't built in the active python's
+  cocotb; run `bootstrap_vpi.py` under the venv (or delete `.venv` + re-run `install_toolchain.ps1`).

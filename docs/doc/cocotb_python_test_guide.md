@@ -11,6 +11,12 @@ doc to the two existing runbooks:
 
 Toolchain: **cocotb 2.0.1 + Verilator 5.048**, native Windows via MSYS2 ucrt64 (no WSL).
 
+**Two verification layers.** The plain drivers/monitors in `lib/` (used by the 53 ported
+tests, straight-line stimulus) and, additive on top, a **real UVM** layer built on
+**pyuvm 4.0.1** (pure Python, cocotb-2.0-compatible; pinned in `requirements.lock`) under
+`verification/cocotb/lib/uvm/` for structured testbenches. The pyuvm drivers reuse the plain
+ones by composition, so cadence lives in one place; see the README "pyuvm layer" section.
+
 ---
 
 ## Part 1 — How the Python test works

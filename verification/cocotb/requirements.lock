@@ -1,12 +1,14 @@
 # Pinned Python dependencies for the cocotb + Verilator verification environment.
-# Install into the MSYS2 ucrt64 (MinGW) python -- NOT an MSVC/venv python (the VPI link is
-# ABI-tied to the MinGW interpreter). See toolchain/README.md and install_toolchain.ps1.
-#
-#   COCOTB_IGNORE_PYTHON_REQUIRES=1 <ucrt64>/bin/python -m pip install \
-#       --break-system-packages -r verification/cocotb/requirements.lock
+# Installed into a venv created FROM the MSYS2 ucrt64 (MinGW) python (verification/cocotb/.venv)
+# -- the venv shares the ucrt64 libpython, so the VPI link stays ABI-compatible; an MSVC-based
+# python/venv does NOT work. install_toolchain.ps1 creates the venv and installs this; see
+# toolchain/README.md.
 #
 # Pin cocotb + Verilator together: the static VPI lib (bootstrap_vpi.py) is rebuilt from
 # the cocotb sources matching this exact version and linked against the installed Verilator.
 cocotb==2.0.1
 find_libpython==0.5.1
 pytest>=8,<9
+# pyuvm: real UVM in pure Python; 4.0.1 supports cocotb 2.0. Used by the lib/uvm/ base and
+# pyuvm tests only; the 53 plain-lib tests do not depend on it.
+pyuvm==4.0.1

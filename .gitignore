@@ -203,6 +203,7 @@ scripts/README.md
 # ============================================================
 verification/cocotb/.build/
 verification/cocotb/_exec/
+verification/cocotb/.venv/
 verification/cocotb/toolchain/make_shim/
 verification/cocotb/**/sim_build/
 verification/cocotb/**/dump.vcd

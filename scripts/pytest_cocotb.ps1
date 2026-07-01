@@ -12,7 +12,7 @@ $Workspace = Split-Path -Parent $ScriptDir
 . (Join-Path $Workspace 'verification\cocotb\toolchain\resolve_msys2.ps1')
 $root = Resolve-Msys2Root
 $env:MSYS2_ROOT = $root
-$py = Join-Path $root 'ucrt64\bin\python.exe'
+$py = Get-CocotbPython -Workspace $Workspace -Root $root   # project venv if present, else ucrt64
 Push-Location $Workspace
 try {
     # -s (no capture) streams the full cocotb sim output live (regression table, per-test

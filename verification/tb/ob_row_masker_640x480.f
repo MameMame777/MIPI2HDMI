@@ -1,2 +1,0 @@
-../../rtl/img_proc/ob_row_masker.sv
-./tb_ob_row_masker_640x480.sv

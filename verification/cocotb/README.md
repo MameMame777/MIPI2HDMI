@@ -35,8 +35,10 @@ or a local `<block>_stubs.sv`) and drive internal post-ISERDES registers via Ver
 .\scripts\pytest_cocotb.ps1 verification/cocotb/<block>   # run a not-yet-registered block
 ```
 
-Tests must run under the MSYS2 ucrt64 python — the scripts select it automatically; a
-plain `pytest` under an MSVC/venv python is rejected by `conftest.py` (VPI ABI mismatch).
+Tests run under the project venv (`verification/cocotb/.venv`, created from the ucrt64 python)
+if present, else the raw ucrt64 python — the scripts select it automatically. A plain `pytest`
+under an **MSVC-based** python is rejected by `conftest.py` (VPI ABI mismatch); a ucrt64-based
+venv is accepted (same `libpython`).
 
 ## Tests in detail
 

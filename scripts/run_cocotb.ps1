@@ -22,7 +22,7 @@ $Workspace = Split-Path -Parent $ScriptDir
 
 $root = Resolve-Msys2Root
 $env:MSYS2_ROOT = $root
-$ucrtPy = Join-Path $root 'ucrt64\bin\python.exe'
+$ucrtPy = Get-CocotbPython -Workspace $Workspace -Root $root   # project venv if present, else ucrt64
 $runner = Join-Path $Workspace 'verification\cocotb\runner.py'
 
 $runnerArgs = @()

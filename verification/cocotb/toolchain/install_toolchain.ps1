@@ -32,7 +32,7 @@ $env:MSYS2_ROOT = $root
 $env:PATH = "$ucrt;$(Join-Path $root 'usr\bin');" + $env:PATH
 
 Write-Host "== MSYS2_ROOT: $root =="
-Write-Host "== [1/3] pacman ucrt64 packages =="
+Write-Host "== [1/4] pacman ucrt64 packages =="
 & $pacman -S --needed --noconfirm `
     mingw-w64-ucrt-x86_64-verilator `
     mingw-w64-ucrt-x86_64-gcc `
@@ -43,14 +43,24 @@ Write-Host "== [1/3] pacman ucrt64 packages =="
     perl
 if ($LASTEXITCODE -ne 0) { throw "pacman failed ($LASTEXITCODE)" }
 
-Write-Host "== [2/3] pip deps (cocotb 2.0.1 etc.) =="
-$req = Join-Path (Split-Path -Parent $PSScriptRoot) 'requirements.lock'
+$cocotbDir = Split-Path -Parent $PSScriptRoot
+$venv = Join-Path $cocotbDir '.venv'
+$venvPy = Join-Path $venv 'bin\python.exe'
+
+Write-Host "== [2/4] create the cocotb venv from the ucrt64 python (isolated deps) =="
+if (-not (Test-Path $venvPy)) {
+    & $ucrtPy -m venv $venv
+    if ($LASTEXITCODE -ne 0) { throw "venv creation failed ($LASTEXITCODE)" }
+}
+
+Write-Host "== [3/4] pip deps into the venv (cocotb 2.0.1, pyuvm, pytest, ...) =="
+$req = Join-Path $cocotbDir 'requirements.lock'
 $env:COCOTB_IGNORE_PYTHON_REQUIRES = '1'
-& $ucrtPy -m pip install --no-input --break-system-packages -r $req
+& $venvPy -m pip install --no-input -r $req
 if ($LASTEXITCODE -ne 0) { throw "pip install failed ($LASTEXITCODE)" }
 
-Write-Host "== [3/3] build static cocotb VPI lib for Verilator =="
-& $ucrtPy (Join-Path (Split-Path -Parent $PSScriptRoot) 'bootstrap_vpi.py')
+Write-Host "== [4/4] build static cocotb VPI lib for Verilator (into the venv's cocotb) =="
+& $venvPy (Join-Path $cocotbDir 'bootstrap_vpi.py')
 if ($LASTEXITCODE -ne 0) { throw "bootstrap_vpi failed ($LASTEXITCODE)" }
 
-Write-Host "== toolchain ready. Try: .\scripts\run_cocotb.ps1 --Suite smoke =="
+Write-Host "== toolchain ready (venv: $venv). Try: .\scripts\run_cocotb.ps1 -Suite smoke =="

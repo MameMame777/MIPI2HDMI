@@ -53,3 +53,30 @@ async def bringup_dual(dut, clk_a: str, rst_a: str, clk_b: str, rst_b: str,
     rb.value = 1
     await ClockCycles(cb, 4)
     return (ca, ra), (cb, rb)
+
+
+async def bringup_n(dut, specs, *, low_cycles: int = 8, stagger: bool = True):
+    """N-clock active-low bring-up. ``specs`` = [(clk_name, rstn_name, period_ns), ...].
+
+    Starts every clock, holds every reset low, then releases either staggered (default,
+    like ``bringup_dual``) or on the same edge (``stagger=False``, the byte_to_core_cdc
+    cadence). Returns ``[(clk_handle, rstn_handle), ...]`` in the given order.
+    """
+    pairs = []
+    for clk_name, rstn_name, period in specs:
+        clk = getattr(dut, clk_name)
+        rstn = getattr(dut, rstn_name)
+        start_clock(clk, period)
+        rstn.value = 0
+        pairs.append((clk, rstn))
+    ref = pairs[0][0]
+    await ClockCycles(ref, low_cycles)
+    if stagger:
+        for clk, rstn in pairs:
+            rstn.value = 1
+            await ClockCycles(clk, max(1, low_cycles // 2))
+    else:
+        for _, rstn in pairs:
+            rstn.value = 1
+    await ClockCycles(ref, 4)
+    return pairs

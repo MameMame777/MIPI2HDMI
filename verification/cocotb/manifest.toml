@@ -277,3 +277,15 @@ path = "verification/cocotb/raw10_ob_masker_e2e"
 group = "mipi_rx"
 suites = ["migrated"]
 path = "verification/cocotb/raw8_ob_masker_e2e"
+
+# --- pyuvm (real UVM) layer: base in lib/uvm/; tests use it. See verification/cocotb/README.md. ---
+
+[blocks.smoke_uvm]
+group = "_smoke"
+suites = ["smoke", "migrated"]
+path = "verification/cocotb/_smoke_uvm"
+
+[blocks.axis_video_bridge_uvm]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/axis_video_bridge_uvm"

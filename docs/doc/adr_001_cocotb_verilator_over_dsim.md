@@ -64,6 +64,11 @@ Windows** via MSYS2 ucrt64. cocotb+Verilator is open-source, license-free, and P
   to a 1-picosecond clock-driver busy-loop (`while True: await Timer(1, unit="ps")`). Fixed to
   a real anti-phase `Clock`. Lesson: never drive a clock/reset with a sub-timestep polling
   loop; always independently re-run agent-produced tests.
+- **Verification-base follow-on (2026-07-01):** for structured testbenches, adopted **pyuvm**
+  (real UVM in pure Python; 4.0.1 supports cocotb 2.0) rather than hand-rolling a UVM clone or
+  adding a fragile C-extension. It is an **additive** layer (`verification/cocotb/lib/uvm/`);
+  the 53 plain-lib tests are untouched and the pyuvm drivers reuse the plain ones by
+  composition. `pyuvm==4.0.1` pinned in `requirements.lock`.
 
 ## Alternatives considered
 

@@ -117,6 +117,31 @@ so logs stay grep-compatible.
 - **Build** — every run re-Verilates (`always=True`); D-PHY/E2E blocks build with
   behavioral primitive stubs and expose internal regs via Verilator `--public-flat-rw`.
 
+### pyuvm (real UVM) layer — optional, for structured testbenches
+
+Beyond the plain drivers above, there is a **real UVM** layer built on
+[pyuvm](https://github.com/pyuvm/pyuvm) 4.0.1 (pure Python, cocotb-2.0-compatible; pinned in
+`requirements.lock`). It is **additive**: the 53 plain-lib tests are untouched; the pyuvm
+drivers **reuse** the plain driving logic by composition. Base classes live in
+[`lib/uvm/`](lib/uvm/) and are used via `from lib.uvm import UvmTest, UvmEnv, PixelInputAgent,
+AxisOutputAgent, Scoreboard, AxisItem, PixelItem, ItemsSequence`:
+
+- `items.py` — `uvm_sequence_item`s (`ByteBeatItem`/`PixelItem`/`AxisItem`, with a `key()`).
+- `interfaces.py` — `uvm_driver`s (reuse `lib.byte_beat/pixel_stream/axis`) + `uvm_monitor`s
+  (`.ap.write()` each beat); signal/clock config via `ConfigDB` under a per-role key.
+- `agents.py` — `uvm_agent`s (sequencer+driver active; monitor passive).
+- `scoreboard.py` — a `uvm_subscriber` comparing observed vs an ordered `expected` (or a
+  `predict()`), raising `CHECK FAILED:`; asserts in `check_phase`.
+- `sequences.py` / `env.py` — `ItemsSequence`; base `UvmEnv` + `UvmTest` (whose `run_phase`
+  raises an objection, brings up clocks/reset via `clkreset.bringup_n`, runs `stimulus()`,
+  drains, drops).
+
+Worked example: [`axis_video_bridge_uvm/test_axis_video_bridge_uvm.py`](axis_video_bridge_uvm/test_axis_video_bridge_uvm.py)
+(Test→Env→pixel-input agent + AXIS-output agent→Scoreboard + a sequence); minimal proof-of-life:
+[`_smoke_uvm/`](_smoke_uvm/). A pyuvm test is a `@pyuvm.test()` `uvm_test`; it accesses the DUT
+via `cocotb.top` and launches through the same `build_and_test` runner. Use pyuvm when a block
+wants structured, reusable UVM components; keep the plain lib for straight-line tests.
+
 ### Suites and verdicts
 
 `runner.py` selects blocks by name or `--suite`, runs each in an **isolated pytest

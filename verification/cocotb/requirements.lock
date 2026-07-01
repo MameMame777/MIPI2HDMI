@@ -10,3 +10,6 @@
 cocotb==2.0.1
 find_libpython==0.5.1
 pytest>=8,<9
+# pyuvm: real UVM in pure Python; 4.0.1 supports cocotb 2.0. Used by the lib/uvm/ base and
+# pyuvm tests only; the 53 plain-lib tests do not depend on it.
+pyuvm==4.0.1

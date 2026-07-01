@@ -197,3 +197,15 @@ docs/doc/rtl_spec_20260619.md
 docs/doc/xilinx_mipi_csi2_rx_subsystem_reference.md
 routeA/README.md
 scripts/README.md
+
+# ============================================================
+# cocotb + Verilator verification (generated artifacts)
+# ============================================================
+verification/cocotb/.build/
+verification/cocotb/_exec/
+verification/cocotb/toolchain/make_shim/
+verification/cocotb/**/sim_build/
+verification/cocotb/**/dump.vcd
+verification/cocotb/**/results.xml
+**/*.result.xml
+**/*.results.xml

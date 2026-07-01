@@ -1,0 +1,279 @@
+# Block registry for the cocotb + Verilator verification environment.
+#
+# runner.py reads this to select a suite and produce the regression report. Each
+# test_<block>.py is self-contained (it declares its own sources / toplevel / parameters
+# and is runnable directly with `pytest <path>`); this manifest holds only the
+# orchestration metadata: group, suites, engine, and the test path. This is the successor
+# to the per-block DSim `.f` filelists.
+#
+# suites: a block may belong to several. "smoke" = the fast completion gate (the new
+# equivalent of the old base-instructions `run_regression.ps1 -Suite smoke`). "parity" =
+# blocks proven to match their DSim verdict during the migration.
+
+[defaults]
+engine = "verilator"
+
+[blocks.smoke]
+group = "_smoke"
+suites = ["smoke"]
+path = "verification/cocotb/_smoke"
+
+[blocks.csi2_packet_parser]
+group = "mipi_rx"
+suites = ["smoke", "parity"]
+path = "verification/cocotb/csi2_packet_parser"
+
+[blocks.axis_rgb_conv3x3]
+group = "img_proc"
+suites = ["smoke", "parity"]
+path = "verification/cocotb/axis_rgb_conv3x3"
+
+[blocks.axis_video_bridge]
+group = "mipi_rx"
+suites = ["smoke", "parity"]
+path = "verification/cocotb/axis_video_bridge"
+
+[blocks.axis_rgb_cascade]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_cascade"
+
+[blocks.axis_rgb_conv5x5]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_conv5x5"
+
+[blocks.axis_rgb_conv5x5_sep]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_conv5x5_sep"
+
+[blocks.axis_rgb_dither]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_dither"
+
+[blocks.axis_rgb_dog]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_dog"
+
+[blocks.axis_rgb_prefilter]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_prefilter"
+
+[blocks.axis_rgb_proc_slot]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_rgb_proc_slot"
+
+[blocks.axis_vdma32_to_y8]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_vdma32_to_y8"
+
+[blocks.axis_y8_to_vdma32]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/axis_y8_to_vdma32"
+
+[blocks.byte_to_core_cdc]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/byte_to_core_cdc"
+
+[blocks.csi2_frame_state]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state"
+
+[blocks.csi2_frame_state_fedelim]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_fedelim"
+
+[blocks.csi2_frame_state_feearly]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_feearly"
+
+[blocks.csi2_frame_state_fsmin]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_fsmin"
+
+[blocks.csi2_frame_state_guarded]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_guarded"
+
+[blocks.csi2_frame_state_irregular]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_irregular"
+
+[blocks.csi2_frame_state_linecount]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_linecount"
+
+[blocks.csi2_frame_state_pure_follow]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_pure_follow"
+
+[blocks.csi2_frame_state_roll_repro]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_roll_repro"
+
+[blocks.csi2_frame_state_sofsynth]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_frame_state_sofsynth"
+
+[blocks.csi2_header_ecc]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_header_ecc"
+
+[blocks.csi2_payload_crc]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_payload_crc"
+
+[blocks.csi2_vcdt_filter]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_vcdt_filter"
+
+[blocks.dphy_hwlock_fsm]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_hwlock_fsm"
+
+[blocks.dphy_lane_supervisor]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_lane_supervisor"
+
+[blocks.dphy_raw_byte_ringbuf]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_raw_byte_ringbuf"
+
+[blocks.e2e_vdma_stacking]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/e2e_vdma_stacking"
+
+[blocks.hdmi_output]
+group = "hdmi"
+suites = ["migrated"]
+path = "verification/cocotb/hdmi_output"
+
+[blocks.ob_row_masker]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/ob_row_masker"
+
+[blocks.ob_row_masker_640x480]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/ob_row_masker_640x480"
+
+[blocks.ob_row_masker_raw10]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/ob_row_masker_raw10"
+
+[blocks.ov5640_sccb_init_probe_runtime]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/ov5640_sccb_init_probe_runtime"
+
+[blocks.rgb565_gray_unpack]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/rgb565_gray_unpack"
+
+[blocks.tb_tpg_parser_full]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/tb_tpg_parser_full"
+
+[blocks.video_frame_normalizer]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/video_frame_normalizer"
+
+[blocks.yuv422_crc_framebuffer_axis]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/yuv422_crc_framebuffer_axis"
+
+[blocks.yuv422_gray_unpack]
+group = "img_proc"
+suites = ["migrated"]
+path = "verification/cocotb/yuv422_gray_unpack"
+
+[blocks.csi2_ddrloop_hdmi_640x480]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_ddrloop_hdmi_640x480"
+
+[blocks.csi2_ddrloop_hdmi_e2e]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/csi2_ddrloop_hdmi_e2e"
+
+[blocks.dphy_hs_byte_probe_gearbox]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_hs_byte_probe_gearbox"
+
+[blocks.dphy_hs_byte_probe_per_lane_idelay]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_hs_byte_probe_per_lane_idelay"
+
+[blocks.dphy_hs_stream_boundary]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_hs_stream_boundary"
+
+[blocks.dphy_lane1_trace]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_lane1_trace"
+
+[blocks.dphy_probe_supervised]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_probe_supervised"
+
+[blocks.dphy_runtime_dt]
+group = "dphy"
+suites = ["migrated"]
+path = "verification/cocotb/dphy_runtime_dt"
+
+[blocks.mipi_to_hdmi_direct_minimal]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/mipi_to_hdmi_direct_minimal"
+
+[blocks.ob_masker_e2e]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/ob_masker_e2e"
+
+[blocks.raw10_ob_masker_e2e]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/raw10_ob_masker_e2e"
+
+[blocks.raw8_ob_masker_e2e]
+group = "mipi_rx"
+suites = ["migrated"]
+path = "verification/cocotb/raw8_ob_masker_e2e"

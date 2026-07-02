@@ -8,6 +8,7 @@ doc to the two existing runbooks:
 - [`verification/cocotb/README.md`](../../verification/cocotb/README.md) — quick-start / layout
 - [`verification/cocotb/toolchain/README.md`](../../verification/cocotb/toolchain/README.md) — install + the 8 Windows workarounds
 - [`adr_001_cocotb_verilator_over_dsim.md`](adr_001_cocotb_verilator_over_dsim.md) — why cocotb+Verilator replaced DSim
+- [`image_file_verification.md`](image_file_verification.md) ([日本語](image_file_verification_ja.md)) — the image-file-driven pyuvm test (`img_file_uvm`): stream any image through an img_proc DUT, compare input/expected/output images against RTL-exact Python golden models
 
 Toolchain: **cocotb 2.0.1 + Verilator 5.048**, native Windows via MSYS2 ucrt64 (no WSL).
 

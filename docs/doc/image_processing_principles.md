@@ -2,6 +2,12 @@
 
 Target: Zybo Z7-20 (xc7z020clg400-1), RGB888 24-bit pixel stream, VGA 640x480 30fps.
 
+> **Verification:** every slot described here is verified in simulation by the
+> image-file-driven cocotb+pyuvm test — an image is streamed through the DUT and every
+> output pixel is compared against the same filter applied in Python. See
+> [image_file_verification.md](image_file_verification.md). Live on-hardware captures of
+> the same filters: [image_processing_samples.md](image_processing_samples.md).
+
 ---
 
 ## 1. Pipeline Overview

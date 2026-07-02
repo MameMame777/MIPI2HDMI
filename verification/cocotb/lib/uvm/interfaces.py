@@ -52,6 +52,32 @@ class PixelDriver(uvm_driver):
             self.seq_item_port.item_done()
 
 
+class FramePixelDriver(uvm_driver):
+    """Frame-level valid-only pixel input: one ImageFrameItem = one whole frame streamed
+    back-to-back (continuous valid, 1 px/clk) via PixelStreamDriver.send_frame, which
+    asserts sof on the first pixel, eol at each row end and eof on the last. Config key
+    ``pixel_in_cfg`` (same as PixelDriver)."""
+
+    cfg_key = "pixel_in_cfg"
+
+    def build_phase(self):
+        self.cfg = _cfg(self, self.cfg_key)
+
+    async def run_phase(self):
+        dut = cocotb.top
+        c = self.cfg
+        drv = _PixelDrv(
+            dut, getattr(dut, c["clk"]),
+            pixel=c.get("pixel", "in_pixel"), valid=c.get("valid", "in_valid"),
+            sof=c.get("sof", "in_sof"), eol=c.get("eol", "in_eol"),
+            eof=c.get("eof", "in_eof"), err=c.get("err", "in_err"))
+        await drv.idle()
+        while True:
+            it = await self.seq_item_port.get_next_item()
+            await drv.send_frame(it.pixels, it.width, err=it.err)
+            self.seq_item_port.item_done()
+
+
 class ByteBeatDriver(uvm_driver):
     """csi2 byte-beat input. Config ``byte_in_cfg`` = {clk, prefix}. Reuses ByteBeatDriver."""
 

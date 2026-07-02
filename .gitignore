@@ -210,3 +210,11 @@ verification/cocotb/**/dump.vcd
 verification/cocotb/**/results.xml
 **/*.result.xml
 **/*.results.xml
+# local sample images for the img_file_uvm test (personal photos must never be committed
+# to this public repo; pass them via IMG_FILE / run_image_test.ps1 -Image instead)
+verification/cocotb/*.png
+verification/cocotb/*.jpg
+verification/cocotb/*.jpeg
+verification/cocotb/*.bmp
+verification/cocotb/*.ppm
+verification/cocotb/*.pgm

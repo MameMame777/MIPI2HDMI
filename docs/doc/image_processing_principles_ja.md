@@ -2,6 +2,12 @@
 
 対象: Zybo Z7-20 (xc7z020clg400-1)、RGB888 24ビットピクセルストリーム、VGA 640x480 30fps。
 
+> **検証:** 本書に記載の各スロットは、画像ファイル駆動の cocotb+pyuvm テストで
+> シミュレーション検証されている — 画像を DUT にストリームし、全出力画素を Python で
+> 同じフィルタを適用した期待値と比較する。
+> [image_file_verification_ja.md](image_file_verification_ja.md) を参照。同じフィルタの
+> 実機ライブ撮影: [image_processing_samples_ja.md](image_processing_samples_ja.md)。
+
 ---
 
 ## 1. パイプライン全体像

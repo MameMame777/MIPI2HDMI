@@ -61,7 +61,35 @@ The dark upper/left fringe on the convolution outputs is **real, verified RTL bo
 behaviour** — the first rows/columns of the window see the zero-initialised line buffers —
 and the golden model reproduces it exactly, so borders are compared, not masked.
 
-## 3. How to run
+## 3. Chaining filters (multi-stage pipelines)
+
+The test runs one slot per simulation, but multi-stage pipelines are verified by
+**cascading runs**: each stage's captured `output.ppm` becomes the next stage's `-Image`
+input, and every stage is still golden-checked pixel-exactly. Example — the classic
+grayscale → outline → binarize chain (the simulation counterpart of the on-hardware
+[`outline.png` / `edge_binary.png`](image_processing_samples.md) gallery captures):
+
+```powershell
+.\scripts\run_image_test.ps1 -Dut proc_slot -Op gray      -OutDir chain\s1   # stage 1
+.\scripts\run_image_test.ps1 -Image chain\s1\proc_slot_<ts>\output.ppm `
+                             -Dut conv3x3   -Kernel laplacian -OutDir chain\s2   # stage 2
+.\scripts\run_image_test.ps1 -Image chain\s2\conv3x3_<ts>\output.ppm `
+                             -Dut proc_slot -Op threshold -Thresh 40 -OutDir chain\s3
+```
+
+| input | 1. `proc_slot` gray | 2. `conv3x3` laplacian (abs) | 3. `proc_slot` threshold 40 |
+|---|---|---|---|
+| <img src="samples/img_file_uvm/pattern_input.png" width="140"> | <img src="samples/img_file_uvm/chain1_gray_output.png" width="140"> | <img src="samples/img_file_uvm/chain2_outline_output.png" width="140"> | <img src="samples/img_file_uvm/chain3_threshold_output.png" width="140"> |
+
+All three stages PASS — each captured image is bit-identical to its Python golden. Note
+the right half going black in stage 1: the RTL grayscale is the documented
+**green-channel luma approximation** (`y = g` in `axis_rgb_proc_slot.sv`, a deliberate
+multiplier-free design choice), and the pattern's right-side bars (magenta / red / blue /
+black) all have G=0. The golden model reproduces exactly that, so the chain verifies what
+the hardware actually computes — stages 2–3 accordingly find edges only where
+green-luma changes (the diagonal and the gradient/black boundary).
+
+## 4. How to run
 
 ```powershell
 # your own image (PNG/JPEG/BMP/... decoded via the repo-root Pillow venv; .ppm/.pgm direct)
@@ -94,7 +122,7 @@ Notes: `-MaxWidth`/`-MaxHeight` bound the downscale (default 640×480); `LINE_PI
 set per build from the image width; suite runs (`-Suite ...`) scrub stale `IMG_*` env vars
 so the registered regression is always the deterministic built-in-pattern configuration.
 
-## 4. Why the expected image is trustworthy
+## 5. Why the expected image is trustworthy
 
 `expected.png` is not a generic library filter — it is a **streaming, beat-indexed
 transliteration of the RTL** ([golden.py](../../verification/cocotb/img_file_uvm/golden.py)):
@@ -107,7 +135,7 @@ means a real RTL/model divergence, never a rounding convention difference. The m
 survived an adversarial multi-agent audit against the RTL with zero confirmed defects
 (see [diary_20260703.md](../progress/diary_20260703.md)).
 
-## 5. UVM architecture
+## 6. UVM architecture
 
 ```
 ImageFrameItem (1 frame = 1 transaction)

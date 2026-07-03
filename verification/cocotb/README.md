@@ -144,6 +144,41 @@ Worked example: [`axis_video_bridge_uvm/test_axis_video_bridge_uvm.py`](axis_vid
 via `cocotb.top` and launches through the same `build_and_test` runner. Use pyuvm when a block
 wants structured, reusable UVM components; keep the plain lib for straight-line tests.
 
+### Image-file-driven test (`img_file_uvm`)
+
+[`img_file_uvm/`](img_file_uvm/) streams an **arbitrary user image** through a selectable
+img_proc slot DUT (`conv3x3|conv5x5|prefilter|proc_slot|dither`), captures the output frame
+via a pyuvm monitor, saves it as PNG/PPM, and compares **every pixel** against a software
+golden model (the same filter applied to the same image in Python, transliterated from the
+RTL — [`golden.py`](img_file_uvm/golden.py), border behaviour included).
+
+Each run produces three images and the verdict is literally their comparison — e.g. run
+`proc_slot_20260703_052153` (op=invert, built-in 64×48 pattern):
+
+| `input.png` — streamed into the DUT | `expected.png` — same filter in Python (golden) | `output.png` — captured RTL output |
+|---|---|---|
+| <img src="../../docs/doc/samples/img_file_uvm/pattern_input.png" width="160"> | <img src="../../docs/doc/samples/img_file_uvm/proc_slot_invert_expected.png" width="160"> | <img src="../../docs/doc/samples/img_file_uvm/proc_slot_invert_output.png" width="160"> |
+
+`PASS` = `output.png` is bit-identical to `expected.png` (all 3072/3072 pixels + framing
+markers); any differing pixel fails with (row, col)/got/exp and a full `mismatches.txt`.
+Images are written before check_phase, so the capture survives a failure. Full walkthrough
+with all five DUTs: [image_file_verification.md](../../docs/doc/image_file_verification.md)
+([日本語](../../docs/doc/image_file_verification_ja.md)). Runs:
+
+```powershell
+.\scripts\run_image_test.ps1 -Image photo.png -Dut conv3x3 -Kernel sobel_x   # any format
+.\scripts\run_image_test.ps1 -Image photo.jpg -Dut prefilter -Op median
+.\scripts\run_image_test.ps1                                                 # builtin pattern, all 5 DUTs
+.\scripts\run_cocotb.ps1 -Suite image                                        # registered suite
+```
+
+Or via env vars (`IMG_FILE`, `IMG_DUT`, `IMG_KERNEL`, `IMG_OP`, ... — full surface in
+[`img_config.py`](img_file_uvm/img_config.py)) + `scripts\pytest_cocotb.ps1
+verification/cocotb/img_file_uvm`. Outputs (input/output/expected PNG, `run_info.txt`,
+`mismatches.txt` on fail) land in `_exec/img_file_uvm/<dut>_<timestamp>/`. Non-PPM input is
+decoded by `scripts/img_to_ppm.py` under the **repo-root** CPython venv (Pillow); the
+MinGW sim side is stdlib-only. `LINE_PIXELS` is set per build from the image width.
+
 ### Suites and verdicts
 
 `runner.py` selects blocks by name or `--suite`, runs each in an **isolated pytest
@@ -154,6 +189,7 @@ subprocess**, and writes `_exec/regression_cocotb_<ts>.md`. Suites (in `manifest
 | `smoke` | fast completion gate — `_smoke` + one block per interface family |
 | `parity` | proven to match the DSim verdict during migration |
 | `migrated` | all ported blocks (effectively the full run) |
+| `image` | image-file-driven pyuvm run (`img_file_uvm`, 5 Verilator builds) |
 
 Verdicts: **PASS** (rc 0) · **FAIL** (test failed / build error) · **NOCHK** (rc 5, pytest
 collected no tests) · **SKIP** (engine binary not on PATH). Note the current runner exits

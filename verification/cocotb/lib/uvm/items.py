@@ -42,6 +42,27 @@ class PixelItem(uvm_sequence_item):
                 f"eof={self.eof}, err={self.err})")
 
 
+class ImageFrameItem(uvm_sequence_item):
+    """One whole video frame as a single transaction (flat row-major 24-bit RGB pixels).
+
+    Frame-level granularity keeps the pyuvm sequencer handshake off the per-pixel path:
+    a 640x480 frame is ONE get_next_item/item_done round-trip instead of 307200, and the
+    driver can stream continuous-valid at 1 px/clk via PixelStreamDriver.send_frame."""
+
+    def __init__(self, name="image_frame_item", pixels=None, width=0, err=0):
+        super().__init__(name)
+        self.pixels = list(pixels or [])
+        self.width = int(width)
+        self.err = int(err)
+
+    def key(self):
+        return (tuple(self.pixels), self.width, self.err)
+
+    def __repr__(self):
+        return (f"ImageFrameItem(pixels={len(self.pixels)}, width={self.width}, "
+                f"err={self.err})")
+
+
 class AxisItem(uvm_sequence_item):
     def __init__(self, name="axis_item", data=0, last=0, user=0):
         super().__init__(name)

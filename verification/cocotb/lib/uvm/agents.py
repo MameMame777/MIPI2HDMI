@@ -8,7 +8,8 @@ from __future__ import annotations
 from pyuvm import uvm_agent, uvm_sequencer
 
 from lib.uvm.interfaces import (
-    AxisMonitor, AxisSourceDriver, ByteBeatDriver, PixelDriver, PixelMonitor,
+    AxisMonitor, AxisSourceDriver, ByteBeatDriver, FramePixelDriver, PixelDriver,
+    PixelMonitor,
 )
 
 
@@ -26,6 +27,12 @@ class _ActiveAgent(uvm_agent):
 class PixelInputAgent(_ActiveAgent):
     """Valid-only pixel input (config key ``pixel_in_cfg``)."""
     driver_cls = PixelDriver
+
+
+class FrameInputAgent(_ActiveAgent):
+    """Frame-level valid-only pixel input (config key ``pixel_in_cfg``): drives whole
+    ImageFrameItem frames continuous-valid via FramePixelDriver."""
+    driver_cls = FramePixelDriver
 
 
 class ByteBeatInputAgent(_ActiveAgent):

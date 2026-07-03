@@ -289,3 +289,11 @@ path = "verification/cocotb/_smoke_uvm"
 group = "mipi_rx"
 suites = ["migrated"]
 path = "verification/cocotb/axis_video_bridge_uvm"
+
+# image-file-driven pyuvm test: streams a user image (or a builtin pattern) through a
+# selectable img_proc slot DUT, golden-model scoreboard + PNG capture. Runs 5 Verilator
+# builds, so it lives in "image" (and migrated), NOT smoke.
+[blocks.img_file_uvm]
+group = "img_proc"
+suites = ["migrated", "image"]
+path = "verification/cocotb/img_file_uvm"

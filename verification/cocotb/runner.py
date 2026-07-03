@@ -63,7 +63,8 @@ def _engine_available(engine: str) -> bool:
     return False
 
 
-def run_block(name: str, meta: dict, timestamp: str, waves: bool) -> dict:
+def run_block(name: str, meta: dict, timestamp: str, waves: bool,
+              hermetic: bool = False) -> dict:
     path = cs.REPO_ROOT / meta["path"]
     log_path = LOG_DIR / f"{name}_{timestamp}.log"
     engine = meta.get("engine", "verilator")
@@ -72,6 +73,13 @@ def run_block(name: str, meta: dict, timestamp: str, waves: bool) -> dict:
                 "sec": 0.0, "log": str(log_path), "reason": f"{engine} not found"}
 
     env = dict(os.environ)
+    if hermetic:
+        # Suite runs are the registered deterministic regression: scrub block-config env
+        # vars (IMG_* -- img_file_uvm) so stale interactive-session state cannot silently
+        # narrow the parametrization (e.g. leftover IMG_DUT drops 4 of 5 DUTs while the
+        # suite stays green) or corrupt it (leftover IMG_SELFTEST_CORRUPT=1 -> false red).
+        # Explicit block-name runs keep the pass-through (documented env-driven use).
+        env = {k: v for k, v in env.items() if not k.startswith("IMG_")}
     if waves:
         env["COCOTB_WAVES"] = "1"
     # -s (no capture) lets the cocotb sim's full output -- the TESTS=/PASS=/FAIL= regression
@@ -144,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for n in names:
         print(f"=== {n} ===", flush=True)
-        r = run_block(n, blocks[n], timestamp, args.waves)
+        r = run_block(n, blocks[n], timestamp, args.waves,
+                      hermetic=args.suite is not None)
         tag = r["verdict"] + (f" ({r['reason']})" if r["reason"] else "")
         print(f"    {tag}  {r['sec']:.1f}s  {r['log']}", flush=True)
         results.append(r)

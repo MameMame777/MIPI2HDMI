@@ -9,6 +9,11 @@ captured by a UVM monitor and saved as an image, and **every output pixel is com
 against an expected image produced by applying the same filter to the same input in
 Python software** (a golden model transliterated bit-exactly from the RTL).
 
+The framework covers **six slot DUTs** plus the two **multi-input chains** (DoG and the
+4-stage cascade); the golden model is protected by its own sim-free self-tests, the stimulus
+is exercised under randomized handshake timing, and the behavioral corners it reaches are made
+explicit by a functional-coverage tally. This document describes that whole picture.
+
 Code: [verification/cocotb/img_file_uvm/](../../verification/cocotb/img_file_uvm/) ·
 Runner wrapper: [scripts/run_image_test.ps1](../../scripts/run_image_test.ps1) ·
 Related: [cocotb_python_test_guide.md](cocotb_python_test_guide.md),
@@ -44,10 +49,32 @@ observed beats: 3072 / expected 3072
 The output images are written **before** the check phase, so you always get the captured
 image for visual inspection even when the comparison fails.
 
-## 2. Expected/output pairs for all five DUTs
+## 2. The six slot DUTs
 
-Same built-in input pattern as above; each row shows the golden expectation next to the
-captured RTL output (bit-identical in these passing runs):
+Each DUT has the same AXI-Stream-like slot contract (`pixel[23:0]` = {R,G,B}, `valid`,
+`sof`/`eol`/`eof`/`err`, 1 pixel/clk). One DUT is verified per simulation, selected by
+`IMG_DUT` (unset → all six run in turn via pytest parametrization). Adding a DUT is one
+`DutSpec` entry in [`dut_registry.py`](../../verification/cocotb/img_file_uvm/dut_registry.py)
+(RTL sources, toplevel, cfg-pin drive, golden function):
+
+| DUT | RTL | Filter |
+|---|---|---|
+| `proc_slot` | `axis_rgb_proc_slot.sv` | point ops (pass / invert / gray / swap / threshold / channel) |
+| `conv3x3` | `axis_rgb_conv3x3.sv` | 3×3 convolution |
+| `conv5x5` | `axis_rgb_conv5x5.sv` | general 5×5 convolution |
+| `conv5x5_sep` | `axis_rgb_conv5x5_sep.sv` | **separable 5×5** — horizontal 1×5 then vertical 5×1, two passes |
+| `prefilter` | `axis_rgb_prefilter.sv` + `median9.sv` | 3×3 prefilter (median, gaussian, point ops) |
+| `dither` | `axis_rgb_dither.sv` | ordered Bayer / random-LFSR dither |
+
+`conv5x5_sep` is worth a note because its golden must model the *two-pass* RTL exactly: the
+horizontal pass requantises to signed-12 (`>>hshift` + clamp12) **before** the vertical 5×1
+line buffers, and its horizontal window carries across row boundaries (not reset on EOL). The
+separable form is only ±2 LSB equivalent to a general 5×5 *by design*, so the golden models the
+separable requantiser, never a general-5×5 reference.
+
+Sample gallery — same built-in pattern, five of the six DUTs (the ones with committed sample
+images); each row shows the golden expectation next to the captured RTL output (bit-identical
+in these passing runs):
 
 | DUT (filter) | expected.png (Python golden) | output.png (RTL sim) |
 |---|---|---|
@@ -61,11 +88,70 @@ The dark upper/left fringe on the convolution outputs is **real, verified RTL bo
 behaviour** — the first rows/columns of the window see the zero-initialised line buffers —
 and the golden model reproduces it exactly, so borders are compared, not masked.
 
-## 3. Chaining filters (multi-stage pipelines)
+## 3. Why the expected image is trustworthy — and how the golden is protected
 
-The test runs one slot per simulation, but multi-stage pipelines are verified by
-**cascading runs**: each stage's captured `output.ppm` becomes the next stage's `-Image`
-input, and every stage is still golden-checked pixel-exactly. Example — the classic
+`expected.png` is not a generic library filter — it is a **streaming, beat-indexed
+transliteration of the RTL** ([golden.py](../../verification/cocotb/img_file_uvm/golden.py)):
+same read-before-write line buffers (zero initial state), same window shift registers,
+same signed-coefficient × unsigned-tap arithmetic with arithmetic shift and saturation,
+same Bayer table and Galois LFSR (seed `0xA5`, advanced per valid beat, carried across
+frames), and even the RTL's Verilog width quirks (the dither smear shifts `n<<1`/`n<<2`
+are 3-bit expressions that wrap modulo 8 — replicated, not "fixed"). A mismatch therefore
+means a real RTL/model divergence, never a rounding convention difference. The models
+survived an adversarial multi-agent audit against the RTL with zero confirmed defects
+(see [diary_20260703.md](../progress/diary_20260703.md)).
+
+### "Just use OpenCV" — measured
+
+To make "not a generic library filter" concrete, here is OpenCV run the way a person would,
+diffed against the RTL-exact golden (built-in pattern; the diff panel is shift-aligned and
+amplified). Numbers are OpenCV-vs-RTL, since the golden is bit-identical to the RTL.
+
+![conv3x3 gaussian: OpenCV vs RTL](samples/img_file_uvm/opencv_vs_rtl_conv3x3.png)
+
+The golden and OpenCV outputs are **visually identical**, yet on a natural image **85% of the
+interior pixels differ — every one by exactly ±1** (OpenCV's `saturate_cast` rounds to nearest;
+the RTL floors via `>>`). Bolt the RTL's floor arithmetic onto cv2 and the interior mismatch
+drops to **0**, so the interior gap is *purely* the rounding convention. Separately, the RTL
+emits each output shifted by the window radius `d=(taps-1)/2` (that is why the fringe is
+top/left only), and its zero-init line buffers + left-row carryover match no cv2 `borderType`
+— the fringe in the heatmap.
+
+![median 3x3: OpenCV vs RTL](samples/img_file_uvm/opencv_vs_rtl_median.png)
+
+Median has no arithmetic to round, so its **interior is bit-identical to OpenCV** (the diff
+panel is black); only the border differs — up to a full 255-LSB flip, where a zero-padded
+window picks a different order-statistic than a reflected one.
+
+| oracle | interior mismatch (shift-aligned) | border | verdict (zero-tolerance) |
+|---|---|---|---|
+| RTL-exact golden | 0% | matches | **PASS** |
+| OpenCV conv gaussian (natural image) | 85% (all ±1) | diverges | FAIL |
+| OpenCV conv gaussian (built-in pattern) | 48% (all ±1) | diverges | FAIL |
+| OpenCV median | 0% (interior exact) | up to 255-LSB flip | border-only FAIL |
+
+So to use OpenCV as the oracle
+you would need, simultaneously, a window-radius shift, a ±1 tolerance (or a re-implemented
+floor), and a border mask; the RTL-transliterated golden needs none of the three. (Experiment:
+[`verification/cocotb/experiments/`](../../verification/cocotb/experiments/) under the repo
+`.venv` with `opencv-python-headless`; raw counts in
+[diary_20260704.md](../progress/diary_20260704.md).)
+
+Because the golden is the single oracle for the whole suite, it is itself regression-tested,
+**sim-free**, by [`golden_selftest/`](../../verification/cocotb/golden_selftest/) (an
+`engine = "none"` block in `smoke`). Each model is cross-checked against an *independent*
+re-derivation written a different way — a 2D-indexed convolution vs the streaming window
+generator; explicit gaussian weights vs the packed accumulator — and the deliberately-quirky
+bits (the dither mod-8 smear-wrap, the LFSR's maximal-length period) are pinned. It is
+mutation-tested: perturbing one golden constant turns the self-tests red *before* any
+simulation runs. This is what lets the pixel compare stay zero-tolerance — the oracle can't
+silently drift.
+
+## 4. Multi-stage pipelines: run-cascade chaining and in-RTL chains
+
+**Run-cascade chaining.** The test runs one slot per simulation, but multi-stage pipelines
+are verified by cascading runs: each stage's captured `output.ppm` becomes the next stage's
+`-Image` input, and every stage is still golden-checked pixel-exactly. Example — the classic
 grayscale → outline → binarize chain (the simulation counterpart of the on-hardware
 [`outline.png` / `edge_binary.png`](image_processing_samples.md) gallery captures):
 
@@ -86,10 +172,50 @@ the right half going black in stage 1: the RTL grayscale is the documented
 **green-channel luma approximation** (`y = g` in `axis_rgb_proc_slot.sv`, a deliberate
 multiplier-free design choice), and the pattern's right-side bars (magenta / red / blue /
 black) all have G=0. The golden model reproduces exactly that, so the chain verifies what
-the hardware actually computes — stages 2–3 accordingly find edges only where
-green-luma changes (the diagonal and the gradient/black boundary).
+the hardware actually computes.
 
-## 4. How to run
+**In-RTL multi-input chains — DoG and cascade.** Two chains are wired inside the RTL rather
+than by re-running: `axis_rgb_dog_combine` (two parallel conv branches → an ordinal-alignment
+FIFO → a difference/sum combine) and the 4-stage `cascade` (conv5x5 → sep → sep → DoG). Both
+are **bit-exact** against goldens composed from the building blocks above
+([`axis_rgb_dog/`](../../verification/cocotb/axis_rgb_dog/),
+[`axis_rgb_cascade/`](../../verification/cocotb/axis_rgb_cascade/)). Two facts make the
+composition exact:
+
+- **Ordinal alignment needs no latency arithmetic.** conv3x3's valid latency is 5 and
+  conv5x5's is 6, so branch A leads branch B by one cycle; the DoG FIFO therefore pairs the
+  k-th A output with the k-th B output — the same spatial pixel — and the golden is a plain
+  element-wise combine of the two branch goldens.
+- **A two-frame steady-state compare skips the cold-start transient.** From a cold reset the
+  chain has a ~1-row FIFO/pipeline-fill transient (why the older TBs warm up and use
+  tolerance). Streaming two frames back-to-back and checking the *second* avoids it: the
+  streaming golden carries line-buffer/FIFO state across frames exactly like the RTL, so
+  frame 2 is steady-state and matches bit-for-bit — confirmed for all 4 DoG modes and all 4
+  cascade taps.
+
+## 5. Handshake robustness and functional coverage
+
+Two properties make "all green" mean more than "the directed stimulus passed once."
+
+**Valid-gap / backpressure stress.** Every datapath gates its state updates on `in_valid`,
+but a continuous-valid driver can never exercise the "advance on clk, not `in_valid`" bug
+class. Since the golden output is a pure function of the *accepted-beat* sequence (independent
+of inter-beat idle timing), injecting random valid-0 stalls needs no scoreboard change:
+[`lib/gap.py`](../../verification/cocotb/lib/gap.py) (off by default → byte-identical) adds
+the stalls, and `run_cocotb.ps1 -Suite stress -Gap sparse|burst|adversarial` re-runs the
+directed suite under randomized handshake timing. All six DUTs stay bit-exact under
+adversarial gaps — including the dither LFSR that advances per valid beat, a property only
+this test can distinguish from a per-clock bug.
+
+**Functional-coverage closure.** [`img_coverage/`](../../verification/cocotb/img_coverage/)
+(sim-free, `engine = "none"`, in `smoke`) asserts the golden input space actually reaches its
+behavioral corners — saturation clamped to *both* rails, border **and** interior pixels, the
+threshold boundary on both sides, both dither modes, all injected gap-size bins — via a stdlib
+`CoverageTally` ([`lib/coverage.py`](../../verification/cocotb/lib/coverage.py)), not a
+third-party coverage package. It turns "all green" into "all green *and here is what the
+stimulus reached*".
+
+## 6. How to run
 
 ```powershell
 # your own image (PNG/JPEG/BMP/... decoded via the repo-root Pillow venv; .ppm/.pgm direct)
@@ -97,18 +223,20 @@ green-luma changes (the diagonal and the gradient/black boundary).
 .\scripts\run_image_test.ps1 -Image photo.jpg -Dut prefilter -Op median
 .\scripts\run_image_test.ps1 -Image photo.png -Dut dither -DitherMode random -DitherBits 2
 
-# built-in pattern, all five DUTs (what the registered regression runs)
+# built-in pattern, all six DUTs (what the registered regression runs)
 .\scripts\run_image_test.ps1
 
 # env-var form (full surface documented in img_file_uvm/img_config.py)
 $env:IMG_FILE='photo.jpg'; $env:IMG_DUT='dither'
 .\scripts\pytest_cocotb.ps1 verification/cocotb/img_file_uvm
 
-# registered suite
-.\scripts\run_cocotb.ps1 -Suite image
+# registered suites
+.\scripts\run_cocotb.ps1 -Suite image                 # img_file_uvm + golden_selftest + img_coverage
+.\scripts\run_cocotb.ps1 -Suite stress -Gap adversarial  # the directed suite under handshake stalls
+.\scripts\run_cocotb.ps1 golden_selftest              # sim-free oracle self-tests
 ```
 
-Each run writes to `verification/cocotb/_exec/img_file_uvm/<dut>_<timestamp>/`:
+Each `img_file_uvm` run writes to `verification/cocotb/_exec/img_file_uvm/<dut>_<timestamp>/`:
 
 | File | Content |
 |---|---|
@@ -121,21 +249,10 @@ Each run writes to `verification/cocotb/_exec/img_file_uvm/<dut>_<timestamp>/`:
 Notes: `-MaxWidth`/`-MaxHeight` bound the downscale (default 640×480); `LINE_PIXELS` is
 set per build from the image width; suite runs (`-Suite ...`) scrub stale `IMG_*` env vars
 so the registered regression is always the deterministic built-in-pattern configuration.
+Non-PPM input is decoded by `scripts/img_to_ppm.py` under the repo-root CPython venv (Pillow);
+the MinGW sim side is stdlib-only.
 
-## 5. Why the expected image is trustworthy
-
-`expected.png` is not a generic library filter — it is a **streaming, beat-indexed
-transliteration of the RTL** ([golden.py](../../verification/cocotb/img_file_uvm/golden.py)):
-same read-before-write line buffers (zero initial state), same window shift registers,
-same signed-coefficient × unsigned-tap arithmetic with arithmetic shift and saturation,
-same Bayer table and Galois LFSR (seed `0xA5`, advanced per valid beat, carried across
-frames), and even the RTL's Verilog width quirks (the dither smear shifts `n<<1`/`n<<2`
-are 3-bit expressions that wrap modulo 8 — replicated, not "fixed"). A mismatch therefore
-means a real RTL/model divergence, never a rounding convention difference. The models
-survived an adversarial multi-agent audit against the RTL with zero confirmed defects
-(see [diary_20260703.md](../progress/diary_20260703.md)).
-
-## 6. UVM architecture
+## 7. UVM architecture
 
 ```
 ImageFrameItem (1 frame = 1 transaction)
@@ -150,4 +267,6 @@ FrameScoreboard ── set_expected(golden) ── check_phase: count + markers 
 ```
 
 All components live in [verification/cocotb/lib/uvm/](../../verification/cocotb/lib/uvm/)
-and are reusable by other video testbenches.
+and are reusable by other video testbenches. The `FramePixelDriver` composes the plain
+`lib.pixel_stream` driver, which is where the optional valid-gap injection (§5) lives, so the
+gap stress works through the UVM layer unchanged.

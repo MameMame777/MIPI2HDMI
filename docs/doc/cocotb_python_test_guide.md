@@ -297,3 +297,25 @@ per block) in `runner.py` keeps the directory navigable.
 Do **#1 + #2** first (both low-effort, both protect and enrich the gate), then **#3 + #4**
 together (the dev-loop speed win), then **#5** (CI, which wants #1 and #2 in place). #6–#9
 are independent and can land opportunistically.
+
+---
+
+## Part 3 — Methodology depth (landed 2026-07-04)
+
+Part 2 is the *infra* axis (CI / exit codes / parallelism). This part is the *methodology*
+axis — depth that makes the green gate earn its green. All shipped and verified; see
+[diary_20260704.md](../progress/diary_20260704.md).
+
+| Practice | Where | Why it matters |
+|----------|-------|----------------|
+| **Golden self-tests** | `golden_selftest/` (engine `none`, `smoke`) | `golden.py` is the oracle for the whole `image` suite; the self-tests cross-check it against an independent re-derivation + pin its documented quirks, so a silent edit fails the gate before any sim runs. Mutation-tested. |
+| **Valid-gap / backpressure** | `lib/gap.py`; `-Gap` flag; `stress` suite | The drivers fed continuous valid, so "advance on clk not in_valid" bugs were unreachable. `COCOTB_GAP` (off by default) injects random stalls; the golden is timing-invariant so the existing bit-exact scoreboards catch handshake bugs unchanged. Verified all 6 img DUTs bit-exact under gaps. |
+| **`@cocotb.parametrize`** | `axis_rgb_proc_slot` | Sweeps N configs in ONE elaboration (vs img_file_uvm's per-config rebuild), each checked against the golden with coverage asserted. |
+| **Functional-coverage tally** | `lib/coverage.py`; `img_coverage/` (engine `none`, `smoke`) | Stdlib dict-of-Counters (not `cocotb-coverage` — no sim-side dep). Asserts the stimulus reaches the behavioral corners (saturation rails, border/interior, threshold sides, dither modes, gap bins). |
+| **Bit-exact goldens for conv5x5_sep / DoG / cascade** | `golden.py`, `dut_registry.py`, `axis_rgb_dog`, `axis_rgb_cascade` | The last img blocks with only tolerance checks now have RTL-exact goldens; conv5x5_sep is a 6th img_file_uvm DUT. DoG/cascade use a two-frame steady-state compare to skip the cold-start FIFO transient. |
+| **ruff + pyproject + markers** | `verification/cocotb/pyproject.toml` | Dev-only lint (not in `requirements.lock`), mypy opt-in on `lib/`, registered suite markers. |
+
+New knobs: `run_cocotb.ps1 -Suite stress -Gap sparse|burst|adversarial` (re-run the directed
+suite under randomized handshake timing); `run_cocotb.ps1 golden_selftest` / `img_coverage`
+(sim-free gate blocks). Both `golden_selftest` and `img_coverage` are `engine = "none"` blocks
+so they run under any interpreter and gate in `smoke` without Verilator.

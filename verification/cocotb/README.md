@@ -7,10 +7,17 @@ Windows** (MSYS2 ucrt64, no WSL). Setup and the Windows workarounds are document
 
 ## Status
 
-**Migration complete (2026-07-01).** All 52 DSim blocks are ported to cocotb + Verilator (53
-cocotb blocks incl. `_smoke`); the full suite is green (`PASS 53 / FAIL 0`). DSim,
-`verification/tb/`, and `scripts/run_dsim.ps1` have been removed — cocotb + Verilator is the
-sole verification path. `manifest.toml` is the block registry.
+cocotb + Verilator is the **sole verification path** — the DSim environment (`verification/tb/`,
+`scripts/run_dsim.ps1`) was removed at the 2026-07-01 migration and all 52 DSim blocks are
+ported. `manifest.toml` is the block registry and a green `-Suite smoke` is the completion gate.
+
+Beyond the directed per-block tests, the environment includes an image-file golden-model layer
+(`img_file_uvm`, **six** img_proc DUTs, pixel-exact) whose oracle is guarded by **sim-free
+golden self-tests** and a **functional-coverage tally** (`golden_selftest` / `img_coverage`,
+`engine = "none"`, in `smoke`); **valid-gap / backpressure randomization** for handshake stress
+(`lib/gap.py`, off by default; `run_cocotb.ps1 -Suite stress -Gap …`); and **bit-exact goldens
+for the separable-5×5, DoG, and cascade chains**. Full write-up: the guide's
+[Part 3](../../docs/doc/cocotb_python_test_guide.md).
 
 Three DUT interface families, one reusable driver each in `lib/`:
 
@@ -108,6 +115,11 @@ so logs stay grep-compatible.
   coroutines woken by the same trigger, which can shift a driven input by a cycle and make
   phase-sensitive tests flaky; a fixed seed makes each block reproducible. Override
   (`$env:COCOTB_SEED=...`) for bisection.
+- **Gap / backpressure** — `COCOTB_GAP` (unset → off → byte-identical to continuous valid)
+  injects random valid-0 stalls between accepted beats via `lib/gap.py`; the golden is
+  timing-invariant so the bit-exact scoreboards catch handshake bugs unchanged. Turn it on for
+  a whole run with `run_cocotb.ps1 -Suite stress -Gap sparse|burst|adversarial`. Reaches the
+  "advance on clk not `in_valid`" bug class the continuous-valid drivers cannot.
 - **Timeouts** — annotate long scenarios with `@cocotb.test(timeout_time=N, timeout_unit="ms")`;
   a hung test fails instead of blocking the suite. Never drive a clock/reset with a
   sub-timestep polling loop (`while True: await Timer(1, unit="ps")`) — use a real `Clock`
@@ -147,10 +159,13 @@ wants structured, reusable UVM components; keep the plain lib for straight-line 
 ### Image-file-driven test (`img_file_uvm`)
 
 [`img_file_uvm/`](img_file_uvm/) streams an **arbitrary user image** through a selectable
-img_proc slot DUT (`conv3x3|conv5x5|prefilter|proc_slot|dither`), captures the output frame
-via a pyuvm monitor, saves it as PNG/PPM, and compares **every pixel** against a software
-golden model (the same filter applied to the same image in Python, transliterated from the
-RTL — [`golden.py`](img_file_uvm/golden.py), border behaviour included).
+img_proc slot DUT (`conv3x3|conv5x5|conv5x5_sep|prefilter|proc_slot|dither`), captures the
+output frame via a pyuvm monitor, saves it as PNG/PPM, and compares **every pixel** against a
+software golden model (the same filter applied to the same image in Python, transliterated from
+the RTL — [`golden.py`](img_file_uvm/golden.py), border behaviour included). The multi-input
+DoG and 4-stage cascade chains are also bit-exact against `golden.py` (composed from the same
+building blocks), verified in [`axis_rgb_dog/`](axis_rgb_dog/) and
+[`axis_rgb_cascade/`](axis_rgb_cascade/) via a two-frame steady-state compare.
 
 Each run produces three images and the verdict is literally their comparison — e.g. run
 `proc_slot_20260703_052153` (op=invert, built-in 64×48 pattern):
@@ -162,13 +177,13 @@ Each run produces three images and the verdict is literally their comparison —
 `PASS` = `output.png` is bit-identical to `expected.png` (all 3072/3072 pixels + framing
 markers); any differing pixel fails with (row, col)/got/exp and a full `mismatches.txt`.
 Images are written before check_phase, so the capture survives a failure. Full walkthrough
-with all five DUTs: [image_file_verification.md](../../docs/doc/image_file_verification.md)
+with all six DUTs: [image_file_verification.md](../../docs/doc/image_file_verification.md)
 ([日本語](../../docs/doc/image_file_verification_ja.md)). Runs:
 
 ```powershell
 .\scripts\run_image_test.ps1 -Image photo.png -Dut conv3x3 -Kernel sobel_x   # any format
 .\scripts\run_image_test.ps1 -Image photo.jpg -Dut prefilter -Op median
-.\scripts\run_image_test.ps1                                                 # builtin pattern, all 5 DUTs
+.\scripts\run_image_test.ps1                                                 # builtin pattern, all 6 DUTs
 .\scripts\run_cocotb.ps1 -Suite image                                        # registered suite
 ```
 
@@ -186,10 +201,11 @@ subprocess**, and writes `_exec/regression_cocotb_<ts>.md`. Suites (in `manifest
 
 | Suite | Meaning |
 |-------|---------|
-| `smoke` | fast completion gate — `_smoke` + one block per interface family |
+| `smoke` | fast completion gate — `_smoke` + one block per interface family + `golden_selftest` + `img_coverage` |
 | `parity` | proven to match the DSim verdict during migration |
 | `migrated` | all ported blocks (effectively the full run) |
-| `image` | image-file-driven pyuvm run (`img_file_uvm`, 5 Verilator builds) |
+| `image` | image-file-driven pyuvm run (`img_file_uvm`, 6 Verilator builds) + the two sim-free gate blocks |
+| `stress` | the handshake-relevant blocks, meant to be re-run under `-Gap …` (valid-gap / backpressure timing) |
 
 Verdicts: **PASS** (rc 0) · **FAIL** (test failed / build error) · **NOCHK** (rc 5, pytest
 collected no tests) · **SKIP** (engine binary not on PATH). Note the current runner exits
@@ -219,7 +235,10 @@ verification/cocotb/
   manifest.toml         block registry (successor to the .f filelists)
   requirements.lock     pinned deps (cocotb==2.0.1)
   toolchain/            install/setup scripts, perl verilator wrapper, README
-  lib/                  clkreset, scoreboard, byte_beat, pixel_stream, axis, unisim stubs
+  lib/                  clkreset, scoreboard, byte_beat, pixel_stream, axis, gap, coverage, unisim stubs
+  pyproject.toml        dev-only ruff/mypy + pytest marker config (not in requirements.lock)
+  golden_selftest/      sim-free golden-model self-tests (engine="none")
+  img_coverage/         sim-free functional-coverage closure (engine="none")
   <block>/test_<block>.py
 ```
 

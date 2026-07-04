@@ -56,6 +56,8 @@ def select(blocks: dict, names: list[str], suite: str | None) -> list[str]:
 
 
 def _engine_available(engine: str) -> bool:
+    if engine == "none":
+        return True                    # pure-Python block (e.g. sim-free golden self-tests)
     if engine == "verilator":
         return shutil.which("verilator") is not None
     if engine == "icarus":
@@ -64,7 +66,7 @@ def _engine_available(engine: str) -> bool:
 
 
 def run_block(name: str, meta: dict, timestamp: str, waves: bool,
-              hermetic: bool = False) -> dict:
+              hermetic: bool = False, gap: str | None = None) -> dict:
     path = cs.REPO_ROOT / meta["path"]
     log_path = LOG_DIR / f"{name}_{timestamp}.log"
     engine = meta.get("engine", "verilator")
@@ -80,6 +82,10 @@ def run_block(name: str, meta: dict, timestamp: str, waves: bool,
         # suite stays green) or corrupt it (leftover IMG_SELFTEST_CORRUPT=1 -> false red).
         # Explicit block-name runs keep the pass-through (documented env-driven use).
         env = {k: v for k, v in env.items() if not k.startswith("IMG_")}
+    if gap:
+        # Re-run the directed stimulus under randomized valid-gap / backpressure timing.
+        # Read by lib/gap.default_gap_policy(); survives the IMG_* scrub above (not IMG_-prefixed).
+        env["COCOTB_GAP"] = gap
     if waves:
         env["COCOTB_WAVES"] = "1"
     # -s (no capture) lets the cocotb sim's full output -- the TESTS=/PASS=/FAIL= regression
@@ -133,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("blocks", nargs="*", help="block name(s); default: all or --suite")
     ap.add_argument("--suite", help="run all blocks in this suite (e.g. smoke, parity)")
     ap.add_argument("--waves", action="store_true", help="dump waveforms (dump.vcd)")
+    ap.add_argument("--gap", choices=("none", "sparse", "burst", "adversarial"),
+                    help="re-run under randomized valid-gap/backpressure timing (COCOTB_GAP)")
     ap.add_argument("--list", action="store_true", help="list blocks and exit")
     args = ap.parse_args(argv)
 
@@ -153,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     for n in names:
         print(f"=== {n} ===", flush=True)
         r = run_block(n, blocks[n], timestamp, args.waves,
-                      hermetic=args.suite is not None)
+                      hermetic=args.suite is not None, gap=args.gap)
         tag = r["verdict"] + (f" ({r['reason']})" if r["reason"] else "")
         print(f"    {tag}  {r['sec']:.1f}s  {r['log']}", flush=True)
         results.append(r)

@@ -76,6 +76,28 @@ def _gold_proc_slot(stream, width, height, rc):
     return G.proc_slot_golden(stream, rc["op"], rc["thresh"])
 
 
+# --------------------------------------------------------------------------- conv5x5 separable
+
+def _pack_taps(taps):
+    """5 signed-8 taps -> 40-bit cfg_h / cfg_v (tap i at bits [i*8 +: 8])."""
+    val = 0
+    for i, t in enumerate(taps):
+        val |= (t & 0xFF) << (i * 8)
+    return val
+
+
+async def _drive_sep(dut, rc):
+    dut.cfg_h.value = _pack_taps(rc["hcoeffs"])
+    dut.cfg_v.value = _pack_taps(rc["vcoeffs"])
+    dut.cfg_hshift.value = rc["hshift"]
+    dut.cfg_vshift.value = rc["vshift"]
+
+
+def _gold_sep(stream, width, height, rc):
+    return G.conv5x5_sep_golden(stream, width, rc["hcoeffs"], rc["vcoeffs"],
+                                rc["hshift"], rc["vshift"])
+
+
 # --------------------------------------------------------------------------- dither
 
 async def _drive_dither(dut, rc):
@@ -123,4 +145,13 @@ DUTS = {
         resolve=ImgConfig.resolve_dither, drive_cfg=_drive_dither,
         golden=_gold_dither,
         describe=lambda rc: f"dither ctrl=0x{rc['ctrl']:02x}"),
+    "conv5x5_sep": DutSpec(
+        name="conv5x5_sep",
+        sources=("rtl/img_proc/axis_rgb_conv5x5_sep.sv",),
+        toplevel="axis_rgb_conv5x5_sep",
+        has_line_pixels=True,
+        resolve=ImgConfig.resolve_conv5x5_sep, drive_cfg=_drive_sep,
+        golden=_gold_sep,
+        describe=lambda rc: (f"conv5x5_sep kernel={rc['name']} h={rc['hcoeffs']} "
+                             f"v={rc['vcoeffs']} hshift={rc['hshift']} vshift={rc['vshift']}")),
 }

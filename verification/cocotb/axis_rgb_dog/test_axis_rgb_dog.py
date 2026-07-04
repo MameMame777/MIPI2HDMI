@@ -24,6 +24,8 @@ out_r/out_g/out_b are byte lanes 2/1/0; the TB samples out_pixel[23:16] = R.
 """
 from __future__ import annotations
 
+import os
+import random
 import sys
 from pathlib import Path
 
@@ -31,6 +33,8 @@ import cocotb
 from cocotb.triggers import ClockCycles
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "img_file_uvm"))
+import golden as G  # noqa: E402
 from lib.clkreset import bringup  # noqa: E402
 from lib.pixel_stream import PixelMonitor, PixelStreamDriver  # noqa: E402
 from lib.scoreboard import check  # noqa: E402
@@ -190,6 +194,53 @@ async def dog_alignment_and_modes(dut):
         cocotb.log.info(f"   out row {rr} ~= {_row_mean(out_r, rr)}")
 
     check(errors == 0, f"axis_rgb_dog alignment + DoG/passthrough ({errors} error(s))")
+
+
+# --- additive: bit-exact STEADY-STATE check of the full chain against the composed golden -----
+# The tolerance test above proves alignment; this proves the exact values. A leads B by one
+# cycle (conv3x3 valid latency 5, conv5x5's 6), so once the pipelines fill the ordinal FIFO
+# pairs the k-th A with the k-th B exactly -- dog_chain_golden composes conv3x3||conv5x5->combine
+# and matches bit-for-bit. The first ~row is a cold-start FIFO/pipeline transient (why the TB
+# above warms up), so -- exactly like img_file_uvm's multi-frame handling -- we stream TWO
+# frames back-to-back and check the SECOND frame, where both the conv line buffers and the FIFO
+# are in steady state. The golden carries state across frames (streaming, no reset), matching
+# the RTL. Both Gaussians are symmetric, so the SV concat packing and the golden idx-order list
+# coincide.
+
+@cocotb.test(timeout_time=6, timeout_unit="ms")
+@cocotb.parametrize(mode=[0, 1, 2, 3])
+async def dog_chain_bitexact(dut, mode):
+    clk, drv, mon = await _bringup_chain(dut)
+    alpha, beta, shift, offset = 1, 1, 0, 32
+    dut.a_coeffs.value = A_COEFFS
+    dut.a_shift.value = A_SHIFT
+    dut.a_en.value = 1
+    dut.b_coeffs.value = B_COEFFS
+    dut.b_shift.value = B_SHIFT
+    dut.b_en.value = 1
+    dut.cfg_alpha.value = alpha
+    dut.cfg_beta.value = beta
+    dut.cfg_shift.value = shift
+    dut.cfg_offset.value = offset
+    dut.cfg_mode.value = mode
+
+    rng = random.Random((int(os.environ.get("COCOTB_SEED", "1"), 0) << 3) ^ (mode + 1))
+    fsz = W * H
+    frame1 = [rng.randrange(0x1000000) for _ in range(fsz)]
+    frame2 = [rng.randrange(0x1000000) for _ in range(fsz)]
+    stream = frame1 + frame2
+    await drv.send_frame(stream, W)                 # two frames back-to-back, continuous valid
+    await ClockCycles(clk, 64)
+
+    got = [b["pixel"] for b in mon.beats]
+    exp = G.dog_chain_golden(stream, W, A_COEFFS_LIST, A_SHIFT, B_COEFFS_LIST, B_SHIFT,
+                             mode, alpha, beta, shift, offset)
+    check(len(got) >= 2 * fsz, f"captured {len(got)} < {2 * fsz} beats")
+    # compare the SECOND frame (steady state: cold-start transient is confined to frame 1)
+    mism = [(fsz + i, f"{got[fsz + i]:06x}", f"{exp[fsz + i]:06x}")
+            for i in range(fsz) if got[fsz + i] != exp[fsz + i]]
+    check(not mism, f"dog chain mode={mode} bit-exact (frame2): "
+                    f"{len(mism)} mismatch(es), first {mism[:3]}")
 
 
 # --- synthesizable wrapper generated as a build artifact (single toplevel for Verilator) ---

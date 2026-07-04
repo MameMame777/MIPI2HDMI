@@ -8,10 +8,29 @@
 #
 # suites: a block may belong to several. "smoke" = the fast completion gate (the new
 # equivalent of the old base-instructions `run_regression.ps1 -Suite smoke`). "parity" =
-# blocks proven to match their DSim verdict during the migration.
+# blocks proven to match their DSim verdict during the migration. "stress" = the same
+# frame tests re-run under randomized valid-gap / backpressure timing (see lib/gap.py).
 
 [defaults]
 engine = "verilator"
+
+# Sim-free self-tests for the img_proc golden models (the oracle for the whole `image`
+# suite). engine="none" -> runs plain pytest, not gated on Verilator being on PATH. In
+# `smoke` so a corrupted golden fails the completion gate before any sim runs.
+[blocks.golden_selftest]
+group = "img_proc"
+suites = ["smoke", "image", "migrated"]
+engine = "none"
+path = "verification/cocotb/golden_selftest"
+
+# Sim-free functional-coverage closure: asserts the golden input space reaches its behavioral
+# corners (saturation both rails, border+interior, threshold both sides, both dither modes)
+# and that the GapPolicy emits the gap sizes it claims. engine="none".
+[blocks.img_coverage]
+group = "img_proc"
+suites = ["smoke", "image", "migrated"]
+engine = "none"
+path = "verification/cocotb/img_coverage"
 
 [blocks.smoke]
 group = "_smoke"
@@ -20,17 +39,17 @@ path = "verification/cocotb/_smoke"
 
 [blocks.csi2_packet_parser]
 group = "mipi_rx"
-suites = ["smoke", "parity"]
+suites = ["smoke", "parity", "stress"]
 path = "verification/cocotb/csi2_packet_parser"
 
 [blocks.axis_rgb_conv3x3]
 group = "img_proc"
-suites = ["smoke", "parity"]
+suites = ["smoke", "parity", "stress"]
 path = "verification/cocotb/axis_rgb_conv3x3"
 
 [blocks.axis_video_bridge]
 group = "mipi_rx"
-suites = ["smoke", "parity"]
+suites = ["smoke", "parity", "stress"]
 path = "verification/cocotb/axis_video_bridge"
 
 [blocks.axis_rgb_cascade]
@@ -40,7 +59,7 @@ path = "verification/cocotb/axis_rgb_cascade"
 
 [blocks.axis_rgb_conv5x5]
 group = "img_proc"
-suites = ["migrated"]
+suites = ["migrated", "stress"]
 path = "verification/cocotb/axis_rgb_conv5x5"
 
 [blocks.axis_rgb_conv5x5_sep]
@@ -50,7 +69,7 @@ path = "verification/cocotb/axis_rgb_conv5x5_sep"
 
 [blocks.axis_rgb_dither]
 group = "img_proc"
-suites = ["migrated"]
+suites = ["migrated", "stress"]
 path = "verification/cocotb/axis_rgb_dither"
 
 [blocks.axis_rgb_dog]
@@ -60,12 +79,12 @@ path = "verification/cocotb/axis_rgb_dog"
 
 [blocks.axis_rgb_prefilter]
 group = "img_proc"
-suites = ["migrated"]
+suites = ["migrated", "stress"]
 path = "verification/cocotb/axis_rgb_prefilter"
 
 [blocks.axis_rgb_proc_slot]
 group = "img_proc"
-suites = ["migrated"]
+suites = ["migrated", "stress"]
 path = "verification/cocotb/axis_rgb_proc_slot"
 
 [blocks.axis_vdma32_to_y8]
@@ -291,9 +310,10 @@ suites = ["migrated"]
 path = "verification/cocotb/axis_video_bridge_uvm"
 
 # image-file-driven pyuvm test: streams a user image (or a builtin pattern) through a
-# selectable img_proc slot DUT, golden-model scoreboard + PNG capture. Runs 5 Verilator
-# builds, so it lives in "image" (and migrated), NOT smoke.
+# selectable img_proc slot DUT, golden-model scoreboard + PNG capture. Runs 6 Verilator
+# builds (conv3x3/conv5x5/conv5x5_sep/prefilter/proc_slot/dither), so it lives in "image"
+# (and migrated), NOT smoke.
 [blocks.img_file_uvm]
 group = "img_proc"
-suites = ["migrated", "image"]
+suites = ["migrated", "image", "stress"]
 path = "verification/cocotb/img_file_uvm"

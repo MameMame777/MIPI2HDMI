@@ -5,8 +5,11 @@ cycle then idles one cycle (the 2-cycle cadence the parser was validated against
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 from cocotb.triggers import RisingEdge
+
+from lib.gap import GapPolicy, default_gap_policy
 
 
 @dataclass
@@ -33,7 +36,12 @@ class ByteBeatDriver:
         self.sop.value = 0
         self.eop.value = 0
 
-    async def send(self, beat: Beat) -> None:
+    async def send(self, beat: Beat, gap_policy: Optional[GapPolicy] = None) -> None:
+        pol = gap_policy if gap_policy is not None else default_gap_policy()
+        if pol.active:
+            for _ in range(pol.next_gap()):     # extra idle (valid=0) cycles before the beat
+                await RisingEdge(self.clk)
+                self.valid.value = 0
         await RisingEdge(self.clk)
         self.data.value = beat.data
         self.keep.value = beat.keep

@@ -26,6 +26,8 @@ checks as the DSim TB, so the row-mean sequence matches exactly.
 """
 from __future__ import annotations
 
+import os
+import random
 import sys
 from pathlib import Path
 
@@ -33,6 +35,8 @@ import cocotb
 from cocotb.triggers import RisingEdge
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "img_file_uvm"))
+import golden as G  # noqa: E402
 from lib.clkreset import bringup  # noqa: E402
 from lib.scoreboard import check  # noqa: E402
 
@@ -230,6 +234,84 @@ async def runtime_bypass_s3(dut):
     dut._log.info(f"[bypass S3=identity] transition widths: t2={w2} t3={w3}")
     d = abs(w3 - w2)
     check(w3 < 8 and d <= 3, f"bypass shrinks t3 (t3={w3}, t2={w2}, |d|={d})")
+
+
+# ---------------------------------------------------------------------------
+# additive: bit-exact check of ALL FOUR taps against the composed goldens. The property tests
+# above prove blur ordering; this proves exact values. Each tap composes the verified building-
+# block goldens: t1 = conv5x5(C1), t2 = conv5x5_sep(t1), t3 = conv5x5_sep(t2), dg = DoG(t1,t3).
+# t3 lags t1 by two sep pipelines (~16 cyc), so the DoG FIFO pairs t1[k] with t3[k] cleanly.
+# Stream two random frames and check the SECOND (steady state; the cold-start transient and the
+# deep line-buffer fill are confined to frame 1), exactly like the DoG chain test.
+# ---------------------------------------------------------------------------
+class _FullCap:
+    """Capture full 24-bit pixels for all four taps on each tap's valid."""
+
+    def __init__(self, dut, clk):
+        self.dut, self.clk = dut, clk
+        self.t1, self.t2, self.t3, self.dg = [], [], [], []
+
+    def start(self):
+        cocotb.start_soon(self._run())
+
+    async def _run(self):
+        d = self.dut
+        while True:
+            await RisingEdge(self.clk)
+            if int(d.t1v.value):
+                self.t1.append(int(d.t1.value))
+            if int(d.t2v.value):
+                self.t2.append(int(d.t2.value))
+            if int(d.t3v.value):
+                self.t3.append(int(d.t3.value))
+            if int(d.dgv.value):
+                self.dg.append(int(d.dg.value))
+
+
+async def _drive_pixels(dut, clk, pixels, flush=96):
+    n = len(pixels)
+    for i, px in enumerate(pixels):
+        await RisingEdge(clk)
+        dut.in_valid.value = 1
+        dut.in_pixel.value = px
+        dut.in_sof.value = 1 if i == 0 else 0
+        dut.in_eol.value = 1 if (i % W) == W - 1 else 0
+        dut.in_eof.value = 1 if i == n - 1 else 0
+    await RisingEdge(clk)
+    await _idle_in(dut)
+    for _ in range(flush):
+        await RisingEdge(clk)
+
+
+@cocotb.test(timeout_time=6, timeout_unit="ms")
+async def cascade_bitexact(dut):
+    clk, _ = await bringup(dut, clk="clk", rst="rst_n")
+    await _cfg_common(dut)
+    dut.h3.value = pack(G5)
+    dut.v3.value = pack(G5)
+    dut.hs3.value = 4
+    dut.vs3.value = 4
+    await _idle_in(dut)
+    cap = _FullCap(dut, clk)
+    cap.start()
+
+    rng = random.Random((int(os.environ.get("COCOTB_SEED", "1"), 0) << 5) ^ 0xCA5CADE)
+    fsz = W * H
+    stream = [rng.randrange(0x1000000) for _ in range(2 * fsz)]
+    await _drive_pixels(dut, clk, stream)
+
+    t1 = G.conv_golden(stream, W, C1, SH1, 0, 1, 5)
+    t2 = G.conv5x5_sep_golden(t1, W, G5, G5, 4, 4)
+    t3 = G.conv5x5_sep_golden(t2, W, G5, G5, 4, 4)
+    dg = G.dog_combine_golden(t1, t3, 2, 1, 1, 0, 128)
+
+    for nm, got, exp in (("t1", cap.t1, t1), ("t2", cap.t2, t2),
+                         ("t3", cap.t3, t3), ("dg", cap.dg, dg)):
+        check(len(got) >= 2 * fsz, f"{nm}: captured {len(got)} < {2 * fsz} beats")
+        mism = [(fsz + i, f"{got[fsz + i]:06x}", f"{exp[fsz + i]:06x}")
+                for i in range(fsz) if got[fsz + i] != exp[fsz + i]]
+        check(not mism, f"cascade {nm} bit-exact (frame2): "
+                        f"{len(mism)} mismatch(es), first {mism[:3]}")
 
 
 # ---------------------------------------------------------------------------

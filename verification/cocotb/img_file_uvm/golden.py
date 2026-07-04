@@ -24,6 +24,11 @@ def _clamp8(v: int) -> int:
     return 0 if v < 0 else 255 if v > 255 else v
 
 
+def _clamp12(v: int) -> int:
+    """Signed 12-bit clamp, matching axis_rgb_conv5x5_sep clamp12() [-2048, 2047]."""
+    return -2048 if v < -2048 else 2047 if v > 2047 else v
+
+
 def _ch(p: int, sel: int) -> int:
     """Byte lane sel: 2=R, 1=G, 0=B (matches the RTL tap()/ch() helpers)."""
     return (p >> (sel * 8)) & 0xFF
@@ -89,6 +94,93 @@ def conv_golden(pixels: Sequence[int], width: int, coeffs: Sequence[int],
             px = (px << 8) | _clamp8(v)
         out.append(px)
     return out
+
+
+# --------------------------------------------------------------------------- conv5x5 separable
+
+def conv5x5_sep_golden(pixels: Sequence[int], width: int, hcoeffs: Sequence[int],
+                       vcoeffs: Sequence[int], hshift: int, vshift: int) -> List[int]:
+    """axis_rgb_conv5x5_sep: separable 5x5 as a horizontal 1x5 pass (requantise to signed 12b
+    via >>hshift + clamp12) followed by a vertical 5x1 pass (>>vshift + saturate to 8b).
+
+    Streaming transliteration:
+      * horizontal window ``hwin`` is a continuous 5-column shift register that is NOT reset on
+        EOL, so columns < 4 of each row carry the previous row's tail exactly like the RTL
+        (and it is not reset between frames either);
+      * ``hcoeffs[i]`` weights ``hwin[i]`` where hwin[4] is the newest column (hc(0)=oldest);
+      * the vertical pass keeps 4 zero-initialised line buffers of the signed-12 hout stream
+        indexed by column (col = k % width, i.e. the RTL vcol that resets on hout EOL);
+      * ``vcoeffs[0]`` weights the oldest row (N-4), vcoeffs[4] the current row (N).
+    conv5x5_sep is only +/-2 LSB equivalent to a general 5x5 by design, so this models the
+    ACTUAL two-pass separable requantisation, never a general-5x5 reference."""
+    n = len(pixels)
+    # --- horizontal pass -> hout[k][sel] signed-12, sel: 0=B 1=G 2=R ---
+    hwin = [0] * 5                                  # hwin[4] = newest column
+    hout: List[List[int]] = []
+    for px in pixels:
+        hwin = hwin[1:] + [px]
+        chans = [0, 0, 0]
+        for sel in (0, 1, 2):
+            acc = sum(hcoeffs[i] * _ch(hwin[i], sel) for i in range(5))
+            chans[sel] = _clamp12(acc >> hshift)    # arithmetic >> then signed-12 clamp
+        hout.append(chans)
+    # --- vertical pass over the hout stream, 4 line buffers (rows N-1..N-4) ---
+    lb = [[[0, 0, 0] for _ in range(width)] for _ in range(4)]   # lb[0]=N-1 .. lb[3]=N-4
+    out: List[int] = []
+    for k in range(n):
+        c = k % width
+        cur = hout[k]                                           # current row (vr4)
+        r1, r2, r3, r4 = lb[0][c], lb[1][c], lb[2][c], lb[3][c]  # read-before-write
+        lb[3][c] = lb[2][c]
+        lb[2][c] = lb[1][c]
+        lb[1][c] = lb[0][c]
+        lb[0][c] = cur
+        px = 0
+        for sel in (2, 1, 0):
+            vsum = (vcoeffs[0] * r4[sel] + vcoeffs[1] * r3[sel] + vcoeffs[2] * r2[sel]
+                    + vcoeffs[3] * r1[sel] + vcoeffs[4] * cur[sel])
+            px = (px << 8) | _clamp8(vsum >> vshift)
+        out.append(px)
+    return out
+
+
+# --------------------------------------------------------------------------- DoG combine
+
+def dog_combine_golden(a_pixels: Sequence[int], b_pixels: Sequence[int], mode: int,
+                       alpha: int, beta: int, shift: int, offset: int) -> List[int]:
+    """axis_rgb_dog_combine: ordinally-aligned combine of two conv-branch output streams. The
+    ordinal FIFO pairs the k-th A output with the k-th B output (A leads B by conv5x5's ~6-cycle
+    valid latency, so pairing is clean from k=0), and both branches emit one output per input
+    pixel in raster order -- so the k-th pair is the SAME spatial pixel. Modes: 0=A passthrough,
+    1=B passthrough, 2=DoG(alpha*A - beta*B), 3=sum(alpha*A + beta*B); modes 2/3 do
+    sat9((sel >>> shift) + offset) per channel (alpha/beta unsigned 8b, offset signed -256..255)."""
+    out: List[int] = []
+    for a, b in zip(a_pixels, b_pixels):
+        px = 0
+        for sel in (2, 1, 0):
+            av, bv = _ch(a, sel), _ch(b, sel)
+            if mode == 0:
+                o = av
+            elif mode == 1:
+                o = bv
+            else:
+                pa, pb = alpha * av, beta * bv           # 16-bit unsigned products
+                s = (pa + pb) if mode == 3 else (pa - pb)
+                v = (s >> shift) + offset                # arithmetic >> on the signed sum
+                o = 0 if v < 0 else 255 if v > 255 else v
+            px = (px << 8) | o
+        out.append(px)
+    return out
+
+
+def dog_chain_golden(pixels: Sequence[int], width: int, a_coeffs: Sequence[int], a_shift: int,
+                     b_coeffs: Sequence[int], b_shift: int, mode: int, alpha: int, beta: int,
+                     shift: int, offset: int) -> List[int]:
+    """Full dog_chain_top = axis_rgb_conv3x3 (A) || axis_rgb_conv5x5 (B) -> dog_combine. Composes
+    the two conv goldens (both cfg_abs=0, cfg_en=1) and the combiner -- bit-exact end to end."""
+    a = conv_golden(pixels, width, a_coeffs, a_shift, 0, 1, 3)
+    b = conv_golden(pixels, width, b_coeffs, b_shift, 0, 1, 5)
+    return dog_combine_golden(a, b, mode, alpha, beta, shift, offset)
 
 
 # --------------------------------------------------------------------------- point ops

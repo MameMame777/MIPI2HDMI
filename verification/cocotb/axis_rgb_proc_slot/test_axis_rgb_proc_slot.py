@@ -13,6 +13,8 @@ Covered, 1:1 with the DSim TB:
 """
 from __future__ import annotations
 
+import os
+import random
 import sys
 from pathlib import Path
 
@@ -20,7 +22,10 @@ import cocotb
 from cocotb.triggers import FallingEdge, RisingEdge
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "img_file_uvm"))
+import golden as G  # noqa: E402
 from lib.clkreset import bringup  # noqa: E402
+from lib.coverage import CoverageTally  # noqa: E402
 from lib.scoreboard import check  # noqa: E402
 
 
@@ -76,6 +81,39 @@ async def rgb_proc_slot_threshold_runtime(dut):
 
     dut.in_valid.value = 0
     await RisingEdge(clk)
+
+
+# --- additive: cocotb-native parametrized random sweep (one Verilator elaboration) ---------
+# @cocotb.parametrize generates one test per op WITHOUT re-elaborating the DUT (contrast
+# img_file_uvm, which rebuilds per config at the pytest level). Each op drives seeded-random
+# pixels + boundary-biased thresholds and checks every beat against the golden _point_op
+# oracle, sampling functional coverage. Complements -- does not replace -- the DSim-parity
+# directed test above.
+
+@cocotb.test(timeout_time=4, timeout_unit="ms")
+@cocotb.parametrize(op=list(range(8)))
+async def rgb_proc_slot_random_sweep(dut, op):
+    clk, _ = await bringup(dut, clk="clk", rst="rst_n", cycles=4, post=2)
+    for nm in ("in_sof", "in_eol", "in_eof", "in_err"):
+        getattr(dut, nm).value = 0
+    seed = int(os.environ.get("COCOTB_SEED", "1"), 0)
+    rng = random.Random((seed << 8) ^ (op + 1))         # deterministic, distinct per op
+    cov = CoverageTally(f"proc_slot_op{op}")
+    for i in range(64):
+        pix = rng.randrange(0x1000000)
+        g = (pix >> 8) & 0xFF
+        # bias thresholds toward the green value so op-4 crosses g<thr / g==thr / g>thr
+        thr = rng.choice([g, (g + 1) & 0xFF, (g - 1) & 0xFF, rng.randrange(256)])
+        exp = G.proc_slot_golden([pix], op, thr)[0]
+        await check_op(dut, clk, f"sweep-op{op}-{i}", op, thr, pix, exp)
+        cov.sample("op", op)
+        if op == 4:
+            cov.sample("thr_side", "gt" if g > thr else "eq" if g == thr else "lt")
+    dut.in_valid.value = 0
+    await RisingEdge(clk)
+    if op == 4:
+        cov.assert_covered("thr_side", ["gt", "eq", "lt"])   # boundary fully exercised
+    dut._log.info(cov.summary())
 
 
 def test_axis_rgb_proc_slot():

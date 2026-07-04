@@ -12,6 +12,8 @@ param(
     [string]$Block,
     [string]$Suite,
     [switch]$Waves,
+    [ValidateSet('none', 'sparse', 'burst', 'adversarial')]
+    [string]$Gap,
     [switch]$List
 )
 
@@ -30,6 +32,7 @@ if ($List) { $runnerArgs += '--list' }
 if ($Suite) { $runnerArgs += @('--suite', $Suite) }
 if ($Block) { $runnerArgs += $Block }
 if ($Waves) { $runnerArgs += '--waves' }
+if ($Gap) { $runnerArgs += @('--gap', $Gap) }
 
 & $ucrtPy $runner @runnerArgs
 exit $LASTEXITCODE

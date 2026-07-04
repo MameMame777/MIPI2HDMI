@@ -11,6 +11,8 @@ from typing import List, Optional, Sequence
 import cocotb
 from cocotb.triggers import FallingEdge, RisingEdge
 
+from lib.gap import GapPolicy, default_gap_policy
+
 
 def _maybe(dut, name: Optional[str]):
     if name and hasattr(dut, name):
@@ -39,6 +41,18 @@ class PixelStreamDriver:
             self.err.value = 0
         self.pixel.value = 0
 
+    async def _bubble(self, gap: int) -> None:
+        """Hold valid/markers low for ``gap`` idle cycles (a handshake stall). The DUT gates
+        on in_valid, so the accepted-beat sequence -- and the golden -- are unchanged."""
+        for _ in range(gap):
+            await self._edge(self.clk)
+            self.valid.value = 0
+            self.sof.value = 0
+            self.eol.value = 0
+            self.eof.value = 0
+            if self.err is not None:
+                self.err.value = 0
+
     async def send(self, pixel: int, sof=0, eol=0, eof=0, err=0) -> None:
         """Drive one pixel for a single cycle, then deassert valid/markers (mirrors the
         DSim ``drive_pixel`` task -- a 2-cycle cadence)."""
@@ -58,9 +72,16 @@ class PixelStreamDriver:
         if self.err is not None:
             self.err.value = 0
 
-    async def send_frame(self, pixels: Sequence[int], width: int, err: int = 0) -> None:
+    async def send_frame(self, pixels: Sequence[int], width: int, err: int = 0,
+                         gap_policy: Optional[GapPolicy] = None) -> None:
+        """Stream a frame (continuous valid by default). ``gap_policy`` (or, when None, the
+        process-wide ``COCOTB_GAP`` default) may inject valid=0 stalls between beats to stress
+        the DUT's in_valid gating -- off by default, so existing tests are byte-identical."""
+        pol = gap_policy if gap_policy is not None else default_gap_policy()
         n = len(pixels)
         for i, px in enumerate(pixels):
+            if pol.active:
+                await self._bubble(pol.next_gap())
             await self._edge(self.clk)
             self.pixel.value = px
             self.valid.value = 1

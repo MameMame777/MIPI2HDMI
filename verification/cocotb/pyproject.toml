@@ -1,0 +1,54 @@
+# Lint / test configuration for the cocotb + Verilator verification environment.
+#
+# ruff and mypy are DEV-ONLY tools -- deliberately NOT in requirements.lock (the sim-side
+# ucrt64 interpreter must stay minimal). Install locally or in CI with `pip install ruff mypy`
+# and run from this directory:
+#
+#     ruff check .                 # lint the testbench Python
+#     ruff format --check .        # style check (non-gating)
+#     mypy lib                     # opt-in typing, widest-blast-radius package first
+#
+# The manifest suites (manifest.toml) remain the primary block selector; the pytest markers
+# below are registered so `pytest -m <suite>` and future marker use don't warn.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", ".build", "_exec", "_smoke", "_smoke_uvm"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# E402: the native-Windows sys.path.insert(...) before `from lib...` is the house idiom
+# (a dual-role module must make lib importable inside the Verilated sim); B011/E501 relaxed.
+ignore = ["E402", "E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lib"]
+
+[tool.ruff.lint.per-file-ignores]
+# behavioural-quirk / documented-magic tests deliberately keep "wrong-looking" constants
+"golden_selftest/*.py" = ["B007"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true      # cocotb/pyuvm ship partial stubs
+warn_unused_ignores = true
+# opt-in: type lib/ first (every test funnels through it), widen later.
+files = ["lib"]
+
+[tool.pytest.ini_options]
+# Registered so the manifest suite names double as pytest markers without "unknown mark"
+# warnings. The runner selects blocks via manifest.toml; markers are for standalone
+# `pytest -m <suite> <path>` use.
+markers = [
+    "smoke: fast completion-gate blocks",
+    "parity: proven to match the retired DSim verdict",
+    "image: image-file golden-model tests",
+    "migrated: all ported blocks",
+    "stress: re-runnable under COCOTB_GAP valid-gap / backpressure timing",
+]
+filterwarnings = [
+    "default",
+    # cocotb 2.0 / pyuvm occasionally surface deprecation chatter from their own internals
+    "ignore::DeprecationWarning:pyuvm.*",
+]

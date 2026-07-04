@@ -56,6 +56,16 @@ CONV5_KERNELS = {
               0, 0, -1, 0, 0], 0, 1),
 }
 
+# ---- separable 5x5 presets: name -> (h taps, v taps, hshift, vshift) ----
+# axis_rgb_conv5x5_sep runs two 1-D passes; the horizontal result is requantised to signed
+# 12b (>>hshift + clamp) before the vertical pass (>>vshift + saturate). Identity = the RTL
+# reset default (passthrough). gaussian = separable {1,4,6,4,1}/16 each pass = 5x5 /256.
+SEP_KERNELS = {
+    "identity": ([0, 0, 1, 0, 0], [0, 0, 1, 0, 0], 0, 0),
+    "gaussian": ([1, 4, 6, 4, 1], [1, 4, 6, 4, 1], 4, 4),
+    "boxish":   ([1, 1, 1, 1, 1], [1, 1, 1, 1, 1], 2, 3),
+}
+
 # ---- point/window op name tables (numeric strings also accepted) ----
 PREFILTER_OPS = {"pass": 0, "invert": 1, "gray": 2, "swap": 3, "threshold": 4,
                  "r_only": 5, "g_only": 6, "b_only": 7, "gaussian": 8, "median": 9}
@@ -69,6 +79,7 @@ DEFAULT_OP_PREFILTER = "median"
 DEFAULT_OP_PROC_SLOT = "invert"
 DEFAULT_DITHER_MODE = "ordered"
 DEFAULT_DITHER_BITS = 2
+DEFAULT_SEP_KERNEL = "gaussian"
 
 
 def _env_int(name: str, default: Optional[int]) -> Optional[int]:
@@ -177,6 +188,24 @@ class ImgConfig:
     def resolve_proc_slot(self) -> dict:
         op = self._resolve_op(PROC_SLOT_OPS, DEFAULT_OP_PROC_SLOT, "proc_slot")
         return {"op": op, "thresh": int(self.thresh) & 0xFF}
+
+    def resolve_conv5x5_sep(self) -> dict:
+        """-> {name, hcoeffs, vcoeffs, hshift, vshift} for axis_rgb_conv5x5_sep.
+        IMG_SEP_KERNEL selects a preset; IMG_SHIFT/IMG_VSHIFT override the two shifts."""
+        name = (os.environ.get("IMG_SEP_KERNEL") or DEFAULT_SEP_KERNEL).lower()
+        if name not in SEP_KERNELS:
+            raise ValueError(f"IMG_SEP_KERNEL {name!r}: choose from {sorted(SEP_KERNELS)}")
+        hc, vc, hshift, vshift = SEP_KERNELS[name]
+        if self.shift is not None:
+            hshift = self.shift
+        vs = _env_int("IMG_VSHIFT", None)
+        if vs is not None:
+            vshift = vs
+        for s in (hshift, vshift):
+            if not 0 <= s <= 15:
+                raise ValueError(f"conv5x5_sep shift {s} outside 0..15")
+        return {"name": name, "hcoeffs": list(hc), "vcoeffs": list(vc),
+                "hshift": int(hshift), "vshift": int(vshift)}
 
     def resolve_dither(self) -> dict:
         if self.dither_ctrl is not None:
